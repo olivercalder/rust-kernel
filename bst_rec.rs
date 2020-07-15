@@ -4,7 +4,7 @@ struct Node {
     right:  Option<Node>  // wrap such variables in the Option enum.
 }
 
-fn new_node(val: u32) {
+fn new_node(val: u32) -> Node {
     Node {val, None, None}
 }
 
@@ -16,7 +16,7 @@ impl Node {
         } else if newval < self.val {
             return match self.left {
                 None => {
-                    self.left = new_node(newval);
+                    self.left = Some(new_node(newval));
                     true
                 },
                 Some(n) => n.add(newval)
@@ -24,7 +24,7 @@ impl Node {
         } else {
             return match self.right {
                 None => {
-                    self.right = new_node(newval);
+                    self.right = Some(new_node(newval));
                     true
                 },
                 Some(n) => n.add(newval)
@@ -33,28 +33,28 @@ impl Node {
     }
     // Returns true if value in tree, else false
     fn contains(&self, val: u32) -> bool {
-        if newval == self.val { return true }
-        else if newval < self.val {
+        if val == self.val { return true }
+        else if val < self.val {
             return match self.left {
-                None => false;
-                Some(n) => self.left.contains(val)
+                None => false,
+                Some(n) => n.contains(val)
             }
         } else {
             return match self.right {
-                None => false;
-                Some(n) => self.right.contains(val)
+                None => false,
+                Some(n) => n.contains(val)
             }
         }
     }
     fn print(&self) -> () {
         match self.left {
-            None => {};
-            Some(n) => self.left.print()
+            None => {},
+            Some(n) => n.print()
         }
-        println!(self.val);
+        println!("{}", self.val);
         match self.right {
-            None => {};
-            Some(n) => self.right.print()
+            None => {},
+            Some(n) => n.print()
         }
     }
 }
