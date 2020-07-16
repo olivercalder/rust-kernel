@@ -102,7 +102,15 @@ impl Writer {
         self.column_position = 0;
     }
     
-    fn clear_row(&mut self, row: usize) {/* TODO */}
+    fn clear_row(&mut self, row: usize) {
+        let blank = ScreenChar {
+            ascii_character: b' ',
+            color_code: self.color_code,
+        };
+        for col in 0..BUFFER_WIDTH {
+            self.buffer.chars[row][col].write(blank);
+        }
+    }
 }
 
 // This implements the core::fmt::Write trait, which allows write! and writeln! macros
@@ -126,8 +134,8 @@ impl fmt::Write for Writer {
 lazy_static! {
     pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
         column_position: 0,
-        color_code: ColorCode::new(Color::LightBlue, Color::Black),
-        buffer: unsafe {&mut *(0xb8000 as *mut Buffer) },  // This is the one piece of unsafe code
+        color_code: ColorCode::new(Color::LightGray, Color::Black),
+        buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },  // This is the one piece of unsafe code
     });
 }
 // The unsafe code is only run once during initialization, and from then on,
@@ -143,7 +151,7 @@ macro_rules! println {
     () => ($crate::print!("\n"));
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
     // Prefixing print! with the $crate:: ensures that we don't need to import
-    // the print! macro if we only want to use println
+    // the print! macro if we only want to use println!
 }
 
 #[doc(hidden)]  // Needs to be public to allow macros to work, but it's internal, so hide it from documentation

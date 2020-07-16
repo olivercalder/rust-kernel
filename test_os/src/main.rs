@@ -16,6 +16,7 @@ fn panic(info: &PanicInfo) -> ! {
 // Provide an entry point, since the linker looks for _start by default
 pub extern "C" fn _start() -> ! {
     println!("Hello Galaxy, the answer is {}", 42);
+    panic!("We panic on purpose");
 
     loop {}
 }
