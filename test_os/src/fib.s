@@ -5,7 +5,7 @@
 _start:
     mov $0, %rax
     mov $1, %rbx
-    mov $10, %rdi
+    mov $10, %rdi   # Indicates which fibonacci number to return
 loop:
     sub $1, %rdi
     cmp $0, %rdi
@@ -23,7 +23,7 @@ end:
     cmp $0, %rsi
     jne return
     mov %rbx, %rax
-return:
+return:             # Perform an exit system call
     mov %rax, %rdi  # rdi holds exit status
-    mov $60, %rax   # rax indicates which syscall
+    mov $60, %rax   # rax indicates which syscall, in this case exit
     syscall
