@@ -160,3 +160,25 @@ pub fn _print(args: fmt::Arguments) {
     // write_fmt() is from the core::fmt::Write trait
     WRITER.lock().write_fmt(args).unwrap();
 }
+
+#[test_case]
+fn test_println_simple() {
+    println!("It's a simple spell, but quite unbreakable.");
+}
+
+#[test_case]
+fn test_println_many() {
+    for _ in 0..200 {
+        println!("This is getting out of hand. Now there are [many] of them!");
+    }
+}
+
+#[test_case]
+fn test_println_output() {
+    let s = "Fear is the little-death that brings total obliteration.";
+    println!("{}", s);
+    for (i, c) in s.chars().enumerate() {
+        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
+        assert_eq!(char::from(screen_char.ascii_character), c);
+    }
+}

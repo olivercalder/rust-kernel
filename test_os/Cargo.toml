@@ -1,17 +1,28 @@
 [package]
 name = "test_os"
 version = "0.1.0"
-authors = ["Oliver Calder <oacalder@gmail.com>"]
+authors = ["Oliver Calder <olivercalder@protonmail.ch>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rlibc = "1.0.0"
 bootloader = "0.9.8"
-volatile = "0.2.6"
+rlibc = "1.0.0"
+volatile = "0.2.6"      # Allows guaranteed writes to memory (or I/O)
 spin = "0.5.2"
+x86_64 = "0.11.0"
+uart_16550 = "0.2.0"    # Provides serial port interface
 
 [dependencies.lazy_static]
 version = "1.0"
 features = ["spin_no_std"]
+
+[package.metadata.bootimage]
+test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-serial", "stdio", "-display", "none"]
+test-success-exit-code = 33     # (0x10 << 1) | 1
+test-timeout = 60               # Seconds to timeout
+
+[[test]]
+name = "should_panic"
+harness = false         # Do not use the test runner, run test directly
