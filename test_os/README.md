@@ -1,9 +1,11 @@
 To compile and run, need a few things:
 
-- `rustup toolchain install --force nightly-2020-07-17`, since there is a problem with Symlinks with the newest nightly as of 22 July 2020
-- `rustup override set nightly-2020-07-17`
+- `rustup toolchain install nightly`
+- `rustup override set nightly`
 - `cargo install bootimage`
 - `rustup component add rust-src`
 - `rustup component add llvm-tools-preview`
 
 Then compile and run the kernel (in QEMU) using `cargo run`
+
+To execute all `test_case` functions, run `cargo test`
