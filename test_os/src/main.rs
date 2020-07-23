@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+extern crate rlibc;
 mod vga_buffer;
 
 // Panic handler
