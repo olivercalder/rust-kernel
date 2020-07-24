@@ -13,6 +13,8 @@ use test_os::println;
 pub extern "C" fn _start() -> ! {
     println!("Fear is the mind killer.");
 
+    test_os::init();
+
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
 
