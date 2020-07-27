@@ -26,3 +26,7 @@ test-timeout = 60               # Seconds to timeout
 [[test]]
 name = "should_panic"
 harness = false         # Do not use the test runner, run test directly
+
+[[test]]
+name = "stack_overflow"
+harness = false
