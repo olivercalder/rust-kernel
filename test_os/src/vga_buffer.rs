@@ -157,8 +157,13 @@ macro_rules! println {
 #[doc(hidden)]  // Needs to be public to allow macros to work, but it's internal, so hide it from documentation
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    // write_fmt() is from the core::fmt::Write trait
-    WRITER.lock().write_fmt(args).unwrap();
+    use x86_64::instructions::interrupts;   // needed to disable interrupts
+
+    interrupts::without_interrupts(|| {
+        // Disables interrupts before acquiring writer lock
+        // write_fmt() is from the core::fmt::Write trait
+        WRITER.lock().write_fmt(args).unwrap();
+    });
 }
 
 #[test_case]
@@ -175,10 +180,16 @@ fn test_println_many() {
 
 #[test_case]
 fn test_println_output() {
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
     let s = "Fear is the little-death that brings total obliteration.";
-    println!("{}", s);
-    for (i, c) in s.chars().enumerate() {
-        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
-        assert_eq!(char::from(screen_char.ascii_character), c);
-    }
+    interrupts::without_interrupts(|| { // disable interrupts for duration of the test
+        let mut writer = WRITER.lock(); // acquire lock for duration of the test
+        writeln!(writer, "\n{}", s).expect("writeln failed");   // writeln is like println, but on a pre-locked writer
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_character), c);
+        }
+    });
 }

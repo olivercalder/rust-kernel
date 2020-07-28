@@ -18,7 +18,8 @@ pub extern "C" fn _start() -> ! {
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
 
-    loop {}
+    println!("Fear is the little-death that brings total obliteration.");
+    test_os::hlt_loop();    // Halt instead of looping forever
 }
 
 /// This function is called on panic.
@@ -26,7 +27,7 @@ pub extern "C" fn _start() -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    loop {}
+    test_os::hlt_loop();
 }
 
 // Panic handler in test mode
