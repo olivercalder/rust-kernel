@@ -1,5 +1,5 @@
 use x86_64::{
-    structures::paging::{Page, PageTable, OffsetPageTable, PhysFrame, Mapper, Size4KiB, FrameAllocator},
+    structures::paging::{PageTable, OffsetPageTable, PhysFrame, Size4KiB, FrameAllocator},
     VirtAddr,
     PhysAddr,
 };
@@ -32,21 +32,6 @@ unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut
     let page_table_ptr: *mut PageTable = virt.as_mut_ptr();
 
     &mut *page_table_ptr // unsafe
-}
-
-/// Creates an example mapping for the given page frame to `0xb8000`.
-pub fn create_example_mapping(page: Page, mapper: &mut OffsetPageTable, frame_allocator: &mut impl FrameAllocator<Size4KiB>) {
-    use x86_64::structures::paging::PageTableFlags as Flags;
-
-    let frame = PhysFrame::containing_address(PhysAddr::new(0xb8000));
-    let flags = Flags::PRESENT | Flags::WRITABLE;
-
-    let map_to_result = unsafe {
-        // FIXME: this is not safe, we do it only for testing
-        mapper.map_to(page, frame, flags, frame_allocator)
-    };
-    map_to_result.expect("map_to failed").flush();
-    // map_to returns a MapperFlush type which allows easily flushing the mapped page from the TLB
 }
 
 /// A FrameAllocator that returns usable frames from the bootloader's memory map.
