@@ -5,9 +5,11 @@
 #![reexport_test_harness_main = "test_main"]  // By default, generates a main() function to test, but we have no_main
 
 extern crate rlibc;
+extern crate alloc;
 use core::panic::PanicInfo;
 use test_os::println;
 use bootloader::{BootInfo, entry_point};
+use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
 
@@ -17,7 +19,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     //  physical_memory_offset: start address of physical memory mapping
 
     use x86_64::VirtAddr;
-    use test_os::memory;
+    use test_os::{memory, allocator};
 
     println!("Fear is the mind killer.");
 
@@ -26,6 +28,26 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { memory::BootInfoFrameAllocator::init(&boot_info.memory_map) };
+
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+
+    // allocate a number on the heap
+    let heap_value = Box::new(41);
+    println!("heap_value at {:p}", heap_value);
+
+    // create a dynamically sized vector
+    let mut vec = Vec::new();
+    for i in 0..500 {
+        vec.push(i);
+    }
+    println!("vec at {:p}", vec.as_slice());
+
+    // create a reference counted vector -> will be freed when count reaches 0
+    let reference_counted = Rc::new(vec![1, 2, 3]);
+    let cloned_reference = reference_counted.clone();
+    println!("current reference count is {}", Rc::strong_count(&cloned_reference));
+    core::mem::drop(reference_counted);
+    println!("reference count is {} now", Rc::strong_count(&cloned_reference));
 
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
