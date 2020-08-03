@@ -17,6 +17,6 @@ If compilation fails for some reason seemingly related to the nightly rust compi
   - As above, if this fails, try with `--force` flag
 - `rustup override set nightly-YYYY-MM-DD`
 
-**A recent version that worked: `nightly-2020-07-28`**
+**A recent version that worked: `nightly-2020-08-02`**
 
-**Note:** The date indicates the date of archive, not release date of the nightly build. Thus, `nightly-2020-07-28` installs the version with build date 2020-07-27.
+**Note:** The date indicates the date of archive, not release date of the nightly build. Thus, `nightly-2020-08-02` installs the version with build date 2020-08-02.
