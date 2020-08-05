@@ -7,9 +7,8 @@
 extern crate rlibc;
 extern crate alloc;
 use core::panic::PanicInfo;
-use test_os::println;
+use test_os::{println, task::{Task, simple_executor::SimpleExecutor}};
 use bootloader::{BootInfo, entry_point};
-use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
 
@@ -31,29 +30,31 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
-    // allocate a number on the heap
-    let heap_value = Box::new(41);
-    println!("heap_value at {:p}", heap_value);
-
-    // create a dynamically sized vector
-    let mut vec = Vec::new();
-    for i in 0..500 {
-        vec.push(i);
-    }
-    println!("vec at {:p}", vec.as_slice());
-
-    // create a reference counted vector -> will be freed when count reaches 0
-    let reference_counted = Rc::new(vec![1, 2, 3]);
-    let cloned_reference = reference_counted.clone();
-    println!("current reference count is {}", Rc::strong_count(&cloned_reference));
-    core::mem::drop(reference_counted);
-    println!("reference count is {} now", Rc::strong_count(&cloned_reference));
+    let mut executor = SimpleExecutor::new();
+    executor.spawn(Task::new(example_task()));
+    // example_task() returns a future, which is then wrapped in a Task to move
+    // it to the heap and pin it, and executor.spawn() adds it to the task_queue
+    executor.run();
+    // pops the task from the front of the task_queue
+    // creates a RawWaker for the task, converts it to a Waker, then creates a Context instance
+    // calls the poll() method on the future of the task using the Context just created
+    // example_task does not wait for anything, so it runs directly until the end
+    // example_task directly returns Poll::Ready, so is not added back to the task queue
 
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
 
     println!("Fear is the little-death that brings total obliteration.");
     test_os::hlt_loop();    // Halt instead of looping forever
+}
+
+async fn async_number() -> u32 {
+    42
+}
+
+async fn example_task() {
+    let number = async_number().await;
+    println!("async number: {}", number);
 }
 
 /// This function is called on panic.
