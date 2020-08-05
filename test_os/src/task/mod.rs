@@ -2,6 +2,7 @@ use core::{future::Future, pin::Pin, task::{Context, Poll}};
 use alloc::boxed::Box;
 
 pub mod simple_executor;
+pub mod keyboard;
 
 pub struct Task {   // newtype wrapper around a pinned, heap allocated, dynamically dispatched future
     future: Pin<Box<dyn Future<Output = ()>>>,

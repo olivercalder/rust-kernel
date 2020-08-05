@@ -7,7 +7,7 @@
 extern crate rlibc;
 extern crate alloc;
 use core::panic::PanicInfo;
-use test_os::{println, task::{Task, simple_executor::SimpleExecutor}};
+use test_os::{println, task::{Task, keyboard, simple_executor::SimpleExecutor}};
 use bootloader::{BootInfo, entry_point};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
@@ -34,6 +34,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     executor.spawn(Task::new(example_task()));
     // example_task() returns a future, which is then wrapped in a Task to move
     // it to the heap and pin it, and executor.spawn() adds it to the task_queue
+
+    executor.spawn(Task::new(keyboard::print_keypresses()));
+
     executor.run();
     // pops the task from the front of the task_queue
     // creates a RawWaker for the task, converts it to a Waker, then creates a Context instance

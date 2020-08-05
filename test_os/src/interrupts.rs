@@ -72,27 +72,12 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptSt
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
-    use spin::Mutex;
     use x86_64::instructions::port::Port;
 
-    lazy_static! {  // Keyboard object handles conversion between scancodes and characters
-        static ref KEYBOARD: Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>> = 
-            Mutex::new(Keyboard::new(layouts::Us104Key, ScancodeSet1, HandleControl::Ignore)); // handle control keys as normal keys
-    }
-
-    let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60); // PS/2 data port is I/O port 0x60
-
     let scancode: u8 = unsafe { port.read() };  // must read scancode from the port before another keyboard interrupt can be handled
-    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {  // translates scancode into Option<KeyEvent>
-        if let Some(key) = keyboard.process_keyevent(key_event) {   // translates key event into character, if possible
-            match key {
-                DecodedKey::Unicode(character) => print!("{}", character),
-                DecodedKey::RawKey(key) => print!("{:?}", key),
-            }
-        }
-    }
+
+    crate::task::keyboard::add_scancode(scancode);
 
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8()); }
     // using the wrong interrupt index is dangerous
