@@ -7,7 +7,7 @@
 extern crate rlibc;
 extern crate alloc;
 use core::panic::PanicInfo;
-use test_os::{println, task::{Task, keyboard, simple_executor::SimpleExecutor}};
+use test_os::{println, task::{Task, keyboard, executor::Executor}};
 use bootloader::{BootInfo, entry_point};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
@@ -30,7 +30,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
-    let mut executor = SimpleExecutor::new();
+    #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
+    test_main();
+
+    let mut executor = Executor::new();
     executor.spawn(Task::new(example_task()));
     // example_task() returns a future, which is then wrapped in a Task to move
     // it to the heap and pin it, and executor.spawn() adds it to the task_queue
@@ -44,11 +47,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // example_task does not wait for anything, so it runs directly until the end
     // example_task directly returns Poll::Ready, so is not added back to the task queue
 
-    #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
-    test_main();
-
-    println!("Fear is the little-death that brings total obliteration.");
-    test_os::hlt_loop();    // Halt instead of looping forever
+    // executor.run() never returns, so no need for hlt_loop()
 }
 
 async fn async_number() -> u32 {

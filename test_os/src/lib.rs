@@ -7,6 +7,7 @@
 #![feature(alloc_error_handler)]
 #![feature(const_fn)]
 #![feature(const_in_array_repeat_expressions)]
+#![feature(wake_trait)]
 
 extern crate rlibc;
 extern crate alloc;
