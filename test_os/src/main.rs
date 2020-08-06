@@ -40,6 +40,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     executor.spawn(Task::new(keyboard::print_keypresses()));
 
+    executor.spawn(Task::new(rpy::main()));
+
     executor.run();
     // pops the task from the front of the task_queue
     // creates a RawWaker for the task, converts it to a Waker, then creates a Context instance

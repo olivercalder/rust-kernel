@@ -16,6 +16,7 @@ uart_16550 = "0.2.0"        # Provides serial port interface
 pic8259_simple = "0.2.0"    # Provides programmable input controller (Intel 8259)
 pc-keyboard = "0.5.0"       # Provides translation of scancodes for sets 1 (IBM XT) and 2. PS/2 in qemu uses set 1
 linked_list_allocator = "0.8.0"     # Provides a linked list heap allocator, also used by the fixed size block allocator
+rustpython = "0.1.2"
 
 [dependencies.lazy_static]
 version = "1.0"
