@@ -30,6 +30,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
+    #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
+    test_main();
+
     let mut executor = SimpleExecutor::new();
     executor.spawn(Task::new(example_task()));
     // example_task() returns a future, which is then wrapped in a Task to move
@@ -43,9 +46,6 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // calls the poll() method on the future of the task using the Context just created
     // example_task does not wait for anything, so it runs directly until the end
     // example_task directly returns Poll::Ready, so is not added back to the task queue
-
-    #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
-    test_main();
 
     println!("Fear is the little-death that brings total obliteration.");
     test_os::hlt_loop();    // Halt instead of looping forever
