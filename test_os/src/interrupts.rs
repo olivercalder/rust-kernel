@@ -38,6 +38,7 @@ lazy_static! {  // IDT will be initialized when it is referenced the first time
         }
         idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
         idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
+        idt[0x80].set_handler_fn(syscall_interrupt_handler);
         idt
     };
 }
@@ -81,6 +82,10 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
 
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8()); }
     // using the wrong interrupt index is dangerous
+}
+
+extern "x86-interrupt" fn syscall_interrupt_handler(_stack_frame: &mut InterruptStackFrame,) {
+    panic!("TRIGGERED SYSCALL");
 }
 
 #[test_case]

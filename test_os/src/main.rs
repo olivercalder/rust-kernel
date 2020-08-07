@@ -3,6 +3,7 @@
 #![feature(custom_test_frameworks)]
 #![test_runner(test_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]  // By default, generates a main() function to test, but we have no_main
+#![feature(llvm_asm)]
 
 extern crate rlibc;
 extern crate alloc;
@@ -32,6 +33,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
+
+    use x86_64::software_interrupt;
+    unsafe { software_interrupt!(1); }
 
     let mut executor = Executor::new();
     executor.spawn(Task::new(example_task()));
