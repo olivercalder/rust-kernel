@@ -85,7 +85,8 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
 }
 
 extern "x86-interrupt" fn syscall_interrupt_handler(_stack_frame: &mut InterruptStackFrame,) {
-    panic!("TRIGGERED SYSCALL");
+    println!("TRIGGERED SYSCALL");
+    hlt_loop();
 }
 
 #[test_case]

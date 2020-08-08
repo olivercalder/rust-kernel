@@ -5,7 +5,7 @@
 
 #include <stdlib.h>
 
-void main() {
+void fib10() {
     int a, b, c, d;
     a = 0;
     b = 1;
@@ -17,5 +17,5 @@ void main() {
         c -= 1;
     }
     if (d == 0) { a = b; }
-    exit(a);    // Perform an exit syscall
+    exit(a);    // perform an exit syscall
 }

@@ -12,6 +12,11 @@ use bootloader::{BootInfo, entry_point};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
 
+//#[link(name = "fibonacci", kind = "static")]
+extern {
+    fn fib10() -> i32;
+}
+
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // BootInfo struct contains memory_map and physical_map_offset
     //  memory_map: amount of physical memory and which regions reserved for devices
@@ -33,8 +38,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
 
-    use syscall::call;
-    println!("{}", call::getpid().unwrap());
+    unsafe { fib10() }; // make an exit syscall with exit code 55
 
     let mut executor = Executor::new();
     executor.spawn(Task::new(example_task()));
