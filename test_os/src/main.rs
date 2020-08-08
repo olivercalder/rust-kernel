@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
+#![feature(asm)]
 #![test_runner(test_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]  // By default, generates a main() function to test, but we have no_main
 
@@ -11,6 +12,12 @@ use test_os::{println, task::{Task, keyboard, executor::Executor}};
 use bootloader::{BootInfo, entry_point};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
+
+#[no_mangle]
+pub unsafe extern "C" fn exit(a: i32) -> () {
+    asm!("int 0x80",
+         in("rax") a);// : "memory" : "intel", "volatile");
+}
 
 //#[link(name = "fibonacci", kind = "static")]
 extern {

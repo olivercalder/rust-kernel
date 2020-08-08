@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use pic8259_simple::ChainedPics;
 use spin;
 
+
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
@@ -85,6 +86,9 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
 }
 
 extern "x86-interrupt" fn syscall_interrupt_handler(_stack_frame: &mut InterruptStackFrame,) {
+    unsafe {
+        println!("{:?} {:?}", _stack_frame.stack_pointer, (*_stack_frame.stack_pointer.as_ptr::<*const i32>()));
+    }
     println!("TRIGGERED SYSCALL");
     hlt_loop();
 }

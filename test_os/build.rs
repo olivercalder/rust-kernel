@@ -3,6 +3,7 @@
  * https://docs.rs/cc/1.0.58/cc/struct.Build.html
  * https://doc.rust-lang.org/cargo/reference/build-scripts.html
  */
+extern crate cc;
 
 fn main() {
     // after running:
@@ -14,8 +15,7 @@ fn main() {
     
     cc::Build::new()
         .file("src/fibonacci.c")
-        .static_flag(true)      // tried without static flag, still cannot find symbols from stdlib
-        .compile("fibonacci");
+        .compile("libfibonacci.a");
     // .compile() runs `ar crs` as well
     // The compilation fails because it cannot find symbols from the libraries imported using
     // #include, such as <stdlib.h> and <stdio.h>
