@@ -34,8 +34,6 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
 
-    unsafe { fib10() }; // make an exit syscall with exit code 55
-
     let mut executor = Executor::new();
     executor.spawn(Task::new(example_task()));
     // example_task() returns a future, which is then wrapped in a Task to move
@@ -43,7 +41,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     executor.spawn(Task::new(keyboard::print_keypresses()));
 
-    println!("Rust kernel booted successfully.")
+    println!("Rust kernel booted successfully.");
 
     executor.run();
     // pops the task from the front of the task_queue
