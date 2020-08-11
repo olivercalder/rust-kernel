@@ -8,10 +8,33 @@
 extern crate rlibc;
 extern crate alloc;     // alloc is one of the few crates that needs the `extern crate` syntax
 use core::panic::PanicInfo;
-use test_os::{println, task::{Task, keyboard, executor::Executor}};
+use test_os::{println, task::{Task, keyboard, executor::Executor}, exit_qemu, QemuExitCode, serial_print, serial_println};
 use bootloader::{BootInfo, entry_point};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
+
+/// 
+async fn sample_application(app_input: u32) -> u32 {
+    serial_print!("Hello {}!", app_input);
+    0
+}
+
+/// Asynchronous function to execute the primary application and handle its output
+async fn run_application(qemu_input: u32) {
+    // Handle the input from qemu, and then run the application here using async/await
+    let result = sample_application(qemu_input).await;
+    // Handle the output of the function
+    let exit_code = match result {
+        0 => QemuExitCode::Success,
+        _ => QemuExitCode::Failed,
+    };
+    // Exit qemu with either a success or failure
+    // Note: qemu I/O port is not configured automatically by cargo run outside of test mode, so
+    // the call to exit_qemu will do have no effect
+    // TODO: provide output data to qemu in a more flexible manner
+    #[cfg(not(test))]   // do not want to trigger automatic successes in main tests
+    exit_qemu(exit_code);
+}
 
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // BootInfo struct contains memory_map and physical_map_offset
@@ -41,7 +64,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     executor.spawn(Task::new(keyboard::print_keypresses()));
 
-    println!("Rust kernel booted successfully.");
+    let sample_input = 42;      // TODO: receive input from qemu
+    executor.spawn(Task::new(run_application(sample_input)));
 
     executor.run();
     // pops the task from the front of the task_queue
@@ -66,7 +90,8 @@ async fn example_task() {
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
+    serial_println!("{}", info);
+    exit_qemu(QemuExitCode::Failed);
     test_os::hlt_loop();
 }
 
