@@ -6,23 +6,12 @@
 #![reexport_test_harness_main = "test_main"]  // By default, generates a main() function to test, but we have no_main
 
 extern crate rlibc;
-extern crate alloc;
+extern crate alloc;     // alloc is one of the few crates that needs the `extern crate` syntax
 use core::panic::PanicInfo;
 use test_os::{println, task::{Task, keyboard, executor::Executor}};
 use bootloader::{BootInfo, entry_point};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
-
-#[no_mangle]
-pub unsafe extern "C" fn exit(a: i32) -> () {
-    asm!("int 0x80",
-         in("rax") a);// : "memory" : "intel", "volatile");
-}
-
-//#[link(name = "fibonacci", kind = "static")]
-extern {
-    fn fib10() -> i32;
-}
 
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // BootInfo struct contains memory_map and physical_map_offset
@@ -53,6 +42,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // it to the heap and pin it, and executor.spawn() adds it to the task_queue
 
     executor.spawn(Task::new(keyboard::print_keypresses()));
+
+    println!("Rust kernel booted successfully.")
 
     executor.run();
     // pops the task from the front of the task_queue

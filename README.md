@@ -1,2 +1,3 @@
-# learn-rust
-A Rust kernel based on Phil Opperman's Blog OS, and some toy programs to learn rust.
+# rust-kernel
+
+A Rust unikernel based on Phil Opperman's Blog OS, designed to execute lambda functions in a serverless environment.

@@ -19,4 +19,4 @@ If compilation fails for some reason seemingly related to the nightly rust compi
 
 **A recent version that worked: `nightly-2020-08-02`**
 
-**Note:** The date indicates the date of archive, not release date of the nightly build. Thus, `nightly-2020-08-02` installs the version with build date 2020-08-02.
+**Note:** The date indicates the date of archive, not release date of the nightly build. Thus, `nightly-2020-08-02` installs the version with build date 2020-08-01.
