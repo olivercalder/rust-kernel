@@ -13,7 +13,7 @@ use bootloader::{BootInfo, entry_point};
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
 
-/// 
+/// A sample application which prints to the serial console
 async fn sample_application(app_input: u32) -> u32 {
     serial_print!("Hello {}!", app_input);
     0
@@ -28,6 +28,9 @@ async fn run_application(qemu_input: u32) {
         0 => QemuExitCode::Success,
         _ => QemuExitCode::Failed,
     };
+
+    serial_println!();   // Flush serial output
+
     // Exit qemu with either a success or failure
     // Note: qemu I/O port is not configured automatically by cargo run outside of test mode, so
     // the call to exit_qemu will do have no effect
