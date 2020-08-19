@@ -3,6 +3,7 @@ To compile and run, few things need to be set up:
 - `rustup toolchain install nightly`
   - If this fails, try with the `--force` flag, as there has been a problem with the `rustfmt` package dependency
 - `cargo install bootimage`
+  - This must be run using the standard toolchain -- ie. not in a directory where the toolchain is set to nightly
 - `rustup component add rust-src`
 - `rustup component add llvm-tools-preview`
 
