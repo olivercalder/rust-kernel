@@ -6,8 +6,9 @@
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
 #![feature(const_fn)]
-#![feature(const_in_array_repeat_expressions)]
-#![feature(wake_trait)]
+#![feature(const_mut_refs)]
+// #![feature(const_in_array_repeat_expressions)]
+// #![feature(wake_trait)]
 
 extern crate rlibc;
 extern crate alloc;
