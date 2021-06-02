@@ -4,12 +4,17 @@
 #![feature(asm)]
 #![test_runner(test_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]  // By default, generates a main() function to test, but we have no_main
+#![allow(unused_imports)]
 
 extern crate rlibc;
 extern crate alloc;     // alloc is one of the few crates that needs the `extern crate` syntax
+extern crate base64;
+// extern crate miniz_oxide;
+extern crate compression;
 use core::panic::PanicInfo;
 use test_os::{println, task::{Task, keyboard, executor::Executor}, exit_qemu, QemuExitCode, serial_print, serial_println};
 use bootloader::{BootInfo, entry_point};
+use alloc::vec::Vec;
 
 entry_point!(kernel_main);  // defines any Rust function as _start() function after doing type checking
 
@@ -61,14 +66,14 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     test_main();
 
     let mut executor = Executor::new();
-    executor.spawn(Task::new(example_task()));
+    // executor.spawn(Task::new(example_task()));
     // example_task() returns a future, which is then wrapped in a Task to move
     // it to the heap and pin it, and executor.spawn() adds it to the task_queue
 
     executor.spawn(Task::new(keyboard::print_keypresses()));
 
     let sample_input = 42;      // TODO: receive input from qemu
-    // executor.spawn(Task::new(run_application(sample_input)));
+    executor.spawn(Task::new(run_application(sample_input)));
 
     executor.run();
     // pops the task from the front of the task_queue
@@ -84,6 +89,7 @@ async fn async_number() -> u32 {
     42
 }
 
+#[allow(dead_code)]
 async fn example_task() {
     let number = async_number().await;
     println!("async number: {}", number);
