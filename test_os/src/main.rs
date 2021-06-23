@@ -68,7 +68,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     executor.spawn(Task::new(keyboard::print_keypresses()));
 
     let sample_input = 42;      // TODO: receive input from qemu
-    executor.spawn(Task::new(run_application(sample_input)));
+    // executor.spawn(Task::new(run_application(sample_input)));
 
     executor.run();
     // pops the task from the front of the task_queue
