@@ -9,8 +9,8 @@
 extern crate rlibc;
 extern crate alloc;     // alloc is one of the few crates that needs the `extern crate` syntax
 extern crate base64;
-// extern crate miniz_oxide;
-extern crate compression;
+extern crate miniz_oxide;
+// extern crate compression;
 use core::panic::PanicInfo;
 use test_os::{println, task::{Task, keyboard, executor::Executor}, exit_qemu, QemuExitCode, serial_print, serial_println};
 use bootloader::{BootInfo, entry_point};

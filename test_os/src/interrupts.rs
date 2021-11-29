@@ -4,10 +4,10 @@
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 use crate::{gdt, print, println, hlt_loop, vga_buffer};
 use lazy_static::lazy_static;
-use pic8259_simple::ChainedPics;
+use pic8259::ChainedPics;
 use spin;
 use base64;
-// use miniz_oxide;
+use miniz_oxide;
 use alloc::vec::Vec;
 use uart_16550::SerialPort;
 
@@ -76,14 +76,14 @@ pub unsafe fn init_pics() {
     let serial_enable = InterruptIndex::Serial1.as_pic_enable_mask()
         & InterruptIndex::Serial2.as_pic_enable_mask();
     serial_port.init();
-    PICS.lock().mask(keyboard_enable & serial_enable, 0xff);
+    PICS.lock().write_mask(keyboard_enable & serial_enable, 0xff);
 }
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
-extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrame, error_code: PageFaultErrorCode) {
+extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, error_code: PageFaultErrorCode) {
     use x86_64::registers::control::Cr2;    // CR2 register is set by CPU on page fault
 
     println!("EXCEPTION: PAGE FAULT");
@@ -93,19 +93,19 @@ extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFra
     hlt_loop();
 }
 
-extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackFrame, _error_code: u64) -> ! {
+extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, _error_code: u64) -> ! {
     println!("DOUBLE FAULT");
     // error code is always 0
     // x86_64 does not permit returning from double fault, hence -> !
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // print!(".");
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::LegacyTimer.as_u8()); }  // using the wrong interrupt index is dangerous
 }
 
-extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
     use x86_64::instructions::port::Port;
 
     let mut port = Port::new(0x60); // PS/2 data port is I/O port 0x60
@@ -117,7 +117,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Interrup
     // using the wrong interrupt index is dangerous
 }
 
-extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackFrame) {
 
 
     // println!("Serial interrupt");
@@ -136,10 +136,9 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: &mut InterruptS
         serial_data.push(serial_byte)}
     }
 
-    // let idat_data_compressed: [u8; 27] = [24, 87, 99, 180, 15, 220, 250, 127, 235, 167, 70, 6, 70, 159, 245, 1, 255, 55, 7, 172, 103, 0, 0, 79, 43, 8, 107];
-    // let decompressed = miniz_oxide::inflate::decompress_to_vec_zlib(&idat_data_compressed).expect("Failed to decompress!");
+    let idat_data_compressed: [u8; 27] = [24, 87, 99, 180, 15, 220, 250, 127, 235, 167, 70, 6, 70, 159, 245, 1, 255, 55, 7, 172, 103, 0, 0, 79, 43, 8, 107];
+    let decompressed = miniz_oxide::inflate::decompress_to_vec_zlib(&idat_data_compressed).expect("Failed to decompress!");
 
-    //
     // for data in serial_data.iter() {
     //     vga_buffer::print_byte(*data);
     // }
@@ -157,7 +156,7 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: &mut InterruptS
     // using the wrong interrupt index is dangerous
 }
 
-extern "x86-interrupt" fn serial_interrupt_handler_two(_stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn serial_interrupt_handler_two(_stack_frame: InterruptStackFrame) {
     println!("Serial Interrupt Two!");
 
     // use x86_64::instructions::port::Port;
@@ -175,7 +174,7 @@ extern "x86-interrupt" fn serial_interrupt_handler_two(_stack_frame: &mut Interr
 
 
 
-extern "x86-interrupt" fn syscall_interrupt_handler(_stack_frame: &mut InterruptStackFrame,) {
+extern "x86-interrupt" fn syscall_interrupt_handler(_stack_frame: InterruptStackFrame,) {
     unsafe {
         println!("{:?} {:?}", _stack_frame.stack_pointer, (*_stack_frame.stack_pointer.as_ptr::<*const i32>()));
     }

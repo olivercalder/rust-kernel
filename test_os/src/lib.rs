@@ -5,7 +5,7 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
-#![feature(const_fn)]
+//#![feature(const_fn)]
 #![feature(const_mut_refs)]
 // #![feature(const_in_array_repeat_expressions)]
 // #![feature(wake_trait)]
