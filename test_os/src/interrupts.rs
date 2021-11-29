@@ -76,7 +76,7 @@ pub unsafe fn init_pics() {
     let serial_enable = InterruptIndex::Serial1.as_pic_enable_mask()
         & InterruptIndex::Serial2.as_pic_enable_mask();
     serial_port.init();
-    PICS.lock().write_mask(keyboard_enable & serial_enable, 0xff);
+    PICS.lock().write_masks(keyboard_enable & serial_enable, 0xff);
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
