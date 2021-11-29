@@ -5,7 +5,7 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(abi_x86_interrupt)]
 #![feature(alloc_error_handler)]
-#![feature(const_fn)]
+//#![feature(const_fn)]
 #![feature(const_mut_refs)]
 // #![feature(const_in_array_repeat_expressions)]
 // #![feature(wake_trait)]
@@ -38,7 +38,7 @@ fn test_kernel_main(_boot_info: &'static BootInfo) -> ! {
 pub fn init() {
     gdt::init();
     interrupts::init_idt();
-    unsafe { interrupts::PICS.lock().initialize() };    // unsafe because PICS must be configured correctly
+    unsafe { interrupts::init_pics()};    // unsafe because PICS must be configured correctly
     x86_64::instructions::interrupts::enable();         // Enable interrupts
 }
 
