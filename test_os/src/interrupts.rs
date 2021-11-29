@@ -18,6 +18,8 @@ pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
 pub static PICS: spin::Mutex<ChainedPics> = spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });  // unsafe due to unchecked offsets
 
+static mut SERIAL_PORT: spin::Mutex<SerialPort> = spin::Mutex::new(unsafe { SerialPort::new(0x3F8) });
+
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
@@ -42,8 +44,6 @@ impl InterruptIndex {
         mask as u8
     }
 }
-
-static mut SERIAL_PORT: SerialPort = unsafe { SerialPort::new(0x3F8) };
 
 
 
@@ -75,7 +75,7 @@ pub unsafe fn init_pics() {
     let keyboard_enable = InterruptIndex::Keyboard.as_pic_enable_mask();
     let serial_enable = InterruptIndex::Serial1.as_pic_enable_mask()
         & InterruptIndex::Serial2.as_pic_enable_mask();
-    SERIAL_PORT.init();
+    SERIAL_PORT.lock().init();
     PICS.lock().write_masks(keyboard_enable & serial_enable, 0xff);
 }
 
@@ -118,22 +118,19 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
 }
 
 extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackFrame) {
-
-
     // println!("Serial interrupt");
-
-    // let mut SERIAL_PORT = unsafe { SerialPort::new(0x3F8) };
-    // SERIAL_PORT.init();
 
     let mut serial_data = Vec::new();
 
     loop {
-        unsafe {let serial_byte = SERIAL_PORT.receive();
-        print!("{:?}", serial_byte);
-        if serial_byte == 10 {
-            break;
+        unsafe {
+            let serial_byte = SERIAL_PORT.lock().receive();
+            print!("{:?}", serial_byte);
+            if serial_byte == 10 {
+                break;
+            }
+            serial_data.push(serial_byte)
         }
-        serial_data.push(serial_byte)}
     }
 
     let idat_data_compressed: [u8; 27] = [24, 87, 99, 180, 15, 220, 250, 127, 235, 167, 70, 6, 70, 159, 245, 1, 255, 55, 7, 172, 103, 0, 0, 79, 43, 8, 107];
