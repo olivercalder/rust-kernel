@@ -43,7 +43,7 @@ impl InterruptIndex {
     }
 }
 
-static mut serial_port: SerialPort = unsafe { SerialPort::new(0x3F8) };
+static mut SERIAL_PORT: SerialPort = unsafe { SerialPort::new(0x3F8) };
 
 
 
@@ -75,7 +75,7 @@ pub unsafe fn init_pics() {
     let keyboard_enable = InterruptIndex::Keyboard.as_pic_enable_mask();
     let serial_enable = InterruptIndex::Serial1.as_pic_enable_mask()
         & InterruptIndex::Serial2.as_pic_enable_mask();
-    serial_port.init();
+    SERIAL_PORT.init();
     PICS.lock().write_masks(keyboard_enable & serial_enable, 0xff);
 }
 
@@ -122,13 +122,13 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
 
     // println!("Serial interrupt");
 
-    // let mut serial_port = unsafe { SerialPort::new(0x3F8) };
-    // serial_port.init();
+    // let mut SERIAL_PORT = unsafe { SerialPort::new(0x3F8) };
+    // SERIAL_PORT.init();
 
     let mut serial_data = Vec::new();
 
     loop {
-        unsafe {let serial_byte = serial_port.receive();
+        unsafe {let serial_byte = SERIAL_PORT.receive();
         print!("{:?}", serial_byte);
         if serial_byte == 10 {
             break;
