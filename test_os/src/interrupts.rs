@@ -251,6 +251,7 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
         } else if chunk_types_equal(new_chunk.type_arr, IHDR_ARR) {
             println!("Read IHDR chunk");
             first_ihdr = index;
+            chunks.push(new_chunk);
         } else {
             println!("Read chunk with unexpected type");
             chunks.push(new_chunk);
