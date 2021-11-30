@@ -6,7 +6,6 @@ use crate::{gdt, print, println, hlt_loop, vga_buffer};
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use spin;
-use base64;
 use miniz_oxide;
 use alloc::vec::Vec;
 use uart_16550::SerialPort;
@@ -240,7 +239,8 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
     for i in 0..8 {
         let serial_byte = unsafe { SERIAL_PORT.lock().receive() };
         if correct_signature[i] != serial_byte {
-            // Invalid png, so just return
+            // Invalid png, so print what it was and then return
+            println!("First byte invalid: {:02x?}", serial_byte);
             unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Serial1.as_u8()); };
             return;
         }
@@ -251,10 +251,6 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
     // If here, then signature matches.
     // Don't signal end of interrupt until png has been fully read and processed.
 
-    //let mut chunks: Vec<Chunk> = Vec::new();
-    //let mut index: usize = 0;
-    //let mut first_ihdr: usize = 0;
-    //let mut first_idat: usize = usize::MAX;
     let mut ihdr_data: Vec<u8> = Vec::with_capacity(13);
     let mut idat_data: Vec<u8> = Vec::new();
 
@@ -322,37 +318,6 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
 
     */
 
-
-    // let mut serial_data = Vec::new();
-
-    /*
-    loop {
-        unsafe {
-            let serial_byte = SERIAL_PORT.lock().receive();
-            print!("{:02x?} ", serial_byte);
-            if serial_byte == 10 {
-                //break;
-            }
-            serial_data.push(serial_byte)
-        }
-    }
-    */
-
-    // let idat_data_compressed: [u8; 27] = [24, 87, 99, 180, 15, 220, 250, 127, 235, 167, 70, 6, 70, 159, 245, 1, 255, 55, 7, 172, 103, 0, 0, 79, 43, 8, 107];
-    // let decompressed = miniz_oxide::inflate::decompress_to_vec_zlib(&idat_data_compressed).expect("Failed to decompress!");
-
-    // for data in serial_data.iter() {
-    //     vga_buffer::print_byte(*data);
-    // }
-
-    // for data in serial_data.iter() {
-    //     vga_buffer::print_byte(*data);
-    // }
-
-    // let mut buffer = Vec::<u8>::new();
-    // base64::decode_config_buf("aGVsbG8gd29ybGR+Cg==", base64::STANDARD, &mut buffer).unwrap();
-    // println!("{:?}", buffer);
-    // println!();
 
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Serial1.as_u8()); }
     // using the wrong interrupt index is dangerous
