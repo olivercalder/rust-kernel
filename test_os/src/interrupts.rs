@@ -120,12 +120,30 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
 const IHDR_ARR: [u8; 4] = [0x49, 0x48, 0x44, 0x52];
 const IDAT_ARR: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
 const IEND_ARR: [u8; 4] = [0x49, 0x45, 0x4e, 0x44];
+const PLTE_ARR: [u8; 4] = [0x50, 0x4c, 0x54, 0x45];
 
 struct Chunk {
     length: u32,
     type_arr: [u8; 4],
     data: Vec<u8>,
     crc: [u8; 4],
+}
+
+const GREYSCALE: u8 = 0;
+const TRUECOLOR: u8 = 2;
+const INDEXED_COLOR: u8 = 3;
+const GREYSCALE_WITH_ALPHA: u8 = 4;
+const TRUECOLOR_WITH_ALPHA: u8 = 6;
+
+fn channel_count(color_type: u8) -> usize {
+    match color_type {
+        GREYSCALE => 1,
+        TRUECOLOR => 3,
+        INDEXED_COLOR => 3,
+        GREYSCALE_WITH_ALPHA => 2,
+        TRUECOLOR_WITH_ALPHA => 4,
+        _ => panic!("Invalid color type: {:?}", color_type),
+    }
 }
 
 struct PNGInfo {
@@ -136,6 +154,24 @@ struct PNGInfo {
     compression_method: u8,
     filter_method: u8,
     interlace_method: u8,
+}
+
+fn check_bit_depth_valid(info: &PNGInfo) -> bool {
+    let depth_options: Vec<u8> = match info.color_type {
+        GREYSCALE => Vec::from([1, 2, 4, 8, 16]),
+        TRUECOLOR => Vec::from([8, 16]),
+        INDEXED_COLOR => Vec::from([1, 2, 4, 8]),
+        GREYSCALE_WITH_ALPHA => Vec::from([8, 16]),
+        TRUECOLOR_WITH_ALPHA => Vec::from([8, 16]),
+        _ => panic!("Invalid color type: {:?}", info.color_type),
+    };
+    depth_options.contains(&info.bit_depth)
+}
+
+fn compute_total_data_bytes(info: &PNGInfo) -> usize {
+    let channels = channel_count(info.color_type);
+    let bits_per_pixel = info.bit_depth as usize * channels;
+    info.height as usize * (1 + ((info.width as usize) * bits_per_pixel / 8))
 }
 
 fn read_chunk() -> Chunk {
@@ -170,28 +206,26 @@ fn chunk_types_equal(arr_1: [u8; 4], arr_2: [u8; 4]) -> bool {
         (arr_1[2] == arr_2[2]) && (arr_1[3] == arr_2[3]);
 }
 
-fn parse_ihdr_chunk(chunk: &Chunk) -> PNGInfo {
+fn parse_ihdr_data(data: Vec<u8>) -> PNGInfo {
     // TODO Implement this properly
-    // assert!(chunk.length == 13);
-    // assert!(chunk_types_equal(chunk.type_arr == IHDR_ARR));
+    // assert!(data.len() == 13);
     return PNGInfo {
-        width: ((chunk.data[0] as u32) << 24) | ((chunk.data[1] as u32) << 16) |
-            ((chunk.data[2] as u32) << 8) | (chunk.data[3] as u32),
-        height: ((chunk.data[4] as u32) << 24) | ((chunk.data[5] as u32) << 16) |
-            ((chunk.data[6] as u32) << 8) | (chunk.data[7] as u32),
-        bit_depth: chunk.data[8],
-        color_type: chunk.data[9],
-        compression_method: chunk.data[10],
-        filter_method: chunk.data[11],
-        interlace_method: chunk.data[12],
+        width: ((data[0] as u32) << 24) | ((data[1] as u32) << 16) |
+            ((data[2] as u32) << 8) | (data[3] as u32),
+        height: ((data[4] as u32) << 24) | ((data[5] as u32) << 16) |
+            ((data[6] as u32) << 8) | (data[7] as u32),
+        bit_depth: data[8],
+        color_type: data[9],
+        compression_method: data[10],
+        filter_method: data[11],
+        interlace_method: data[12],
     };
 }
 
-fn parse_idat_chunk(chunk: &Chunk) -> Vec<u8> {
+fn decompress_idat_data(data: Vec<u8>) -> Vec<u8> {
     // TODO Implement this properly
-    // assert!(chunk_types_equal(chunk.type_arr, IDAT_ARR));
     println!("Started decompressing IDAT chunk...");
-    let decompressed = miniz_oxide::inflate::decompress_to_vec_zlib(chunk.data.as_slice()).expect("Failed to decompress!");
+    let decompressed = miniz_oxide::inflate::decompress_to_vec_zlib(data.as_slice()).expect("Failed to decompress!");
     println!("Finished decompressing IDAT chunk");
     return decompressed
 }
@@ -217,58 +251,76 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
     // If here, then signature matches.
     // Don't signal end of interrupt until png has been fully read and processed.
 
-    let mut chunks: Vec<Chunk> = Vec::new();
-    let mut index: usize = 0;
-    let mut first_ihdr: usize = 0;
-    let mut first_idat: usize = usize::MAX;
+    //let mut chunks: Vec<Chunk> = Vec::new();
+    //let mut index: usize = 0;
+    //let mut first_ihdr: usize = 0;
+    //let mut first_idat: usize = usize::MAX;
+    let mut ihdr_data: Vec<u8> = Vec::with_capacity(13);
+    let mut idat_data: Vec<u8> = Vec::new();
 
     loop {
         let mut new_chunk = read_chunk();
         println!("\nNew chunk read");
         println!("length: {:?}", new_chunk.length);
         println!("type:   {:?}", new_chunk.type_arr);
+        /*
         println!("data:");
         for byte in &new_chunk.data {
             print!("{:02x?} ", byte);
         }
         print!("\n");
+        */
         if chunk_types_equal(new_chunk.type_arr, IEND_ARR) {
             println!("Read IEND chunk, break from loop");
-            chunks.push(new_chunk);
+            // chunks.push(new_chunk);
             break;
+        } else if chunk_types_equal(new_chunk.type_arr, IHDR_ARR) {
+            println!("Read IHDR chunk");
+            //ihdr.data.append(&mut new_chunk.data);
+            ihdr_data.append(&mut new_chunk.data);
         } else if chunk_types_equal(new_chunk.type_arr, IDAT_ARR) {
             print!("Read IDAT chunk... ");
             // TODO: take advantage of fact that IDAT chunks must be consecutive
-            if first_idat == usize::MAX {
-                println!("the first one");
-                first_idat = index;
-                chunks.push(new_chunk);
-            } else {
-                println!("not the first one");
-                chunks[first_idat].length += new_chunk.length;
-                chunks[first_idat].data.append(&mut new_chunk.data);
-            }
-        } else if chunk_types_equal(new_chunk.type_arr, IHDR_ARR) {
-            println!("Read IHDR chunk");
-            first_ihdr = index;
-            chunks.push(new_chunk);
+            idat_data.append(&mut new_chunk.data);
         } else {
-            println!("Read chunk with unexpected type");
-            chunks.push(new_chunk);
+            println!("Read chunk with unexpected type: {:?}", new_chunk.type_arr);
         }
-        index += 1;
     }
     println!("Escaped the loop");
 
-    println!("First IHDR at chunk {}", first_ihdr);
-    println!("First IDAT at chunk {}", first_idat);
+    let png_info = parse_ihdr_data(ihdr_data);
 
-    let decompressed_data = parse_idat_chunk(&(chunks[first_idat]));
+    assert!(png_info.compression_method == 0);  // png only supports 0
+    assert!(png_info.filter_method == 0);       // png only supports 0
+    assert!(check_bit_depth_valid(&png_info) == true);
+
+    let decompressed_data = decompress_idat_data(idat_data);
     println!("Decompressed data from IDAT blocks");
+    /*
     for byte in decompressed_data {
         print!("{:02x?} ", byte);
     }
     print!("\n");
+    */
+
+    let expected_size = compute_total_data_bytes(&png_info);
+    println!("IDAT decompressed data size equals expected size? {:?}", expected_size == decompressed_data.len());
+
+    /*
+    let unfiltered_data = unfilter_data(&png_info, decompressed_data);
+
+    let deserialized_data = deserialize_data(&png_info, unfiltered_data);
+
+    let raw_data = match png_info.interlace_method {
+        0 => deserialized_data,
+        1 => dinterlace_data(&png_info, deserialized_data),
+        _ => panic!("Invalid interlace method"),
+    };
+
+    let thumbnail_data = generate_thumbnail(&png_info, raw_data);
+    // don't bother interlacing output
+
+    */
 
 
     // let mut serial_data = Vec::new();
