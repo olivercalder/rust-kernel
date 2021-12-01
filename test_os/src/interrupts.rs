@@ -10,8 +10,6 @@ use miniz_oxide;
 use alloc::vec::Vec;
 use uart_16550::SerialPort;
 
-
-
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
@@ -43,8 +41,6 @@ impl InterruptIndex {
         mask as u8
     }
 }
-
-
 
 lazy_static! {  // IDT will be initialized when it is referenced the first time
     static ref IDT: InterruptDescriptorTable = {
@@ -115,11 +111,6 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8()); }
     // using the wrong interrupt index is dangerous
 }
-
-const IHDR_ARR: [u8; 4] = [0x49, 0x48, 0x44, 0x52];
-const IDAT_ARR: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
-const IEND_ARR: [u8; 4] = [0x49, 0x45, 0x4e, 0x44];
-const PLTE_ARR: [u8; 4] = [0x50, 0x4c, 0x54, 0x45];
 
 const GREYSCALE: u8 = 0;
 const TRUECOLOR: u8 = 2;
@@ -230,11 +221,6 @@ fn read_chunk() -> Chunk {
         crc,
     };
     chunk
-}
-
-fn chunk_types_equal(arr_1: [u8; 4], arr_2: [u8; 4]) -> bool {
-    return (arr_1[0] == arr_2[0]) && (arr_1[1] == arr_2[1]) &&
-        (arr_1[2] == arr_2[2]) && (arr_1[3] == arr_2[3]);
 }
 
 fn parse_ihdr_data(data: Vec<u8>) -> PNGInfo {
@@ -392,15 +378,15 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
         }
         print!("\n");
         */
-        if chunk_types_equal(new_chunk.type_arr, IEND_ARR) {
+        if &new_chunk.type_arr == "IEND".as_bytes() {
             println!("Read IEND chunk, break from loop");
             // chunks.push(new_chunk);
             break;
-        } else if chunk_types_equal(new_chunk.type_arr, IHDR_ARR) {
+        } else if &new_chunk.type_arr == "IHDR".as_bytes() {
             println!("Read IHDR chunk");
             //ihdr.data.append(&mut new_chunk.data);
             ihdr_data.append(&mut new_chunk.data);
-        } else if chunk_types_equal(new_chunk.type_arr, IDAT_ARR) {
+        } else if &new_chunk.type_arr == "IDAT".as_bytes() {
             print!("Read IDAT chunk... ");
             // TODO: take advantage of fact that IDAT chunks must be consecutive
             idat_data.append(&mut new_chunk.data);
