@@ -276,10 +276,12 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                 }
             },
             1 => {  // sub
-                unfiltered.push(data[row * (stride + 1) + 1]);
-                for col in 1..stride {
+                for col in 0..bytes_per_pixel {
+                    unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                }
+                for col in bytes_per_pixel..stride {
                     let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                    unfiltered.push((orig + unfiltered[row * stride + col - 1] as u32) as u8);
+                    unfiltered.push((orig + unfiltered[row * stride + col - bytes_per_pixel] as u32) as u8);
                 }
             },
             2 => {  // up
@@ -298,8 +300,8 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                 for col in 0..stride {
                     let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
                     let mut sum: u32 = 0;
-                    if col > 0 {
-                        sum += unfiltered[row * stride + col - 1] as u32;
+                    if col >= bytes_per_pixel {
+                        sum += unfiltered[row * stride + col - bytes_per_pixel] as u32;
                     }
                     if row > 0 {
                         sum += unfiltered[(row - 1) * stride + col] as u32;
@@ -310,12 +312,12 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
             4 => {  // Paeth predictor
                 for col in 0..stride {
                     let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                    let a: i32 = if col > 0 {
-                        unfiltered[row * stride + col - 1] as i32 } else { 0 };
+                    let a: i32 = if col >= bytes_per_pixel {
+                        unfiltered[row * stride + col - bytes_per_pixel] as i32 } else { 0 };
                     let b: i32 = if row > 0 {
                         unfiltered[(row - 1) * stride + col] as i32 } else { 0 };
-                    let c: i32 = if row > 0 && col > 0 {
-                        unfiltered[(row - 1) * stride + col - 1] as i32 } else { 0 };
+                    let c: i32 = if row > 0 && col >= bytes_per_pixel {
+                        unfiltered[(row - 1) * stride + col - bytes_per_pixel] as i32 } else { 0 };
                     let p: i32 = a + b - c;
                     let result: u32;
                     let mut pa: i32 = p - a;
