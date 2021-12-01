@@ -121,6 +121,14 @@ const IDAT_ARR: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
 const IEND_ARR: [u8; 4] = [0x49, 0x45, 0x4e, 0x44];
 const PLTE_ARR: [u8; 4] = [0x50, 0x4c, 0x54, 0x45];
 
+const GREYSCALE: u8 = 0;
+const TRUECOLOR: u8 = 2;
+const INDEXED_COLOR: u8 = 3;
+const GREYSCALE_WITH_ALPHA: u8 = 4;
+const TRUECOLOR_WITH_ALPHA: u8 = 6;
+
+const DEFAULT_COMPRESSION_LEVEL: u8 = 3;
+
 struct Chunk {
     length: u32,
     type_arr: [u8; 4],
@@ -128,11 +136,15 @@ struct Chunk {
     crc: [u8; 4],
 }
 
-const GREYSCALE: u8 = 0;
-const TRUECOLOR: u8 = 2;
-const INDEXED_COLOR: u8 = 3;
-const GREYSCALE_WITH_ALPHA: u8 = 4;
-const TRUECOLOR_WITH_ALPHA: u8 = 6;
+struct PNGInfo {
+    width: usize,
+    height: usize,
+    bit_depth: u8,
+    color_type: u8,
+    compression_method: u8,
+    filter_method: u8,
+    interlace_method: u8,
+}
 
 fn channel_count(color_type: u8) -> usize {
     match color_type {
@@ -145,32 +157,52 @@ fn channel_count(color_type: u8) -> usize {
     }
 }
 
-struct PNGInfo {
-    width: u32,
-    height: u32,
-    bit_depth: u8,
-    color_type: u8,
-    compression_method: u8,
-    filter_method: u8,
-    interlace_method: u8,
+fn check_color_type_valid(color_type: u8) -> bool {
+    match color_type {
+        GREYSCALE => true,
+        TRUECOLOR => true,
+        INDEXED_COLOR => true,
+        GREYSCALE_WITH_ALPHA => true,
+        TRUECOLOR_WITH_ALPHA => true,
+        _ => false,
+    }
 }
 
-fn check_bit_depth_valid(info: &PNGInfo) -> bool {
-    let depth_options: Vec<u8> = match info.color_type {
+fn check_bit_depth_valid(depth: u8, color_type: u8) -> bool {
+    let depth_options: Vec<u8> = match color_type {
         GREYSCALE => Vec::from([1, 2, 4, 8, 16]),
         TRUECOLOR => Vec::from([8, 16]),
         INDEXED_COLOR => Vec::from([1, 2, 4, 8]),
         GREYSCALE_WITH_ALPHA => Vec::from([8, 16]),
         TRUECOLOR_WITH_ALPHA => Vec::from([8, 16]),
-        _ => panic!("Invalid color type: {:?}", info.color_type),
+        _ => panic!("Invalid color type: {:?}", color_type),
     };
-    depth_options.contains(&info.bit_depth)
+    depth_options.contains(&depth)
+}
+
+fn check_interlace_method_valid(method: u8) -> bool {
+    return (method & !1) == 0
+}
+
+fn check_png_info_valid(info: &PNGInfo) -> bool {
+    (check_color_type_valid(info.color_type) == true)
+    && (check_bit_depth_valid(info.bit_depth, info.color_type) == true)
+    && (info.compression_method == 0)   // png only supports 0
+    && (info.filter_method == 0)        // png only supports 0
+    && (check_interlace_method_valid(info.interlace_method) == true)
+
+    && (info.color_type & 1 == 0)   // For now, do not allow indexed-color
+    && (info.bit_depth == 8)        // For now, only accept bit depth of 8
+}
+
+fn compute_bytes_per_pixel(info: &PNGInfo) -> usize {
+    let channels = channel_count(info.color_type);
+    let bits_per_pixel = info.bit_depth as usize * channels;
+    bits_per_pixel / 8
 }
 
 fn compute_total_data_bytes(info: &PNGInfo) -> usize {
-    let channels = channel_count(info.color_type);
-    let bits_per_pixel = info.bit_depth as usize * channels;
-    info.height as usize * (1 + ((info.width as usize) * bits_per_pixel / 8))
+    info.height * (1 + compute_bytes_per_pixel(&info) * info.width)
 }
 
 fn read_chunk() -> Chunk {
@@ -209,10 +241,10 @@ fn parse_ihdr_data(data: Vec<u8>) -> PNGInfo {
     // TODO Implement this properly
     // assert!(data.len() == 13);
     return PNGInfo {
-        width: ((data[0] as u32) << 24) | ((data[1] as u32) << 16) |
-            ((data[2] as u32) << 8) | (data[3] as u32),
-        height: ((data[4] as u32) << 24) | ((data[5] as u32) << 16) |
-            ((data[6] as u32) << 8) | (data[7] as u32),
+        width: ((data[0] as usize) << 24) | ((data[1] as usize) << 16) |
+            ((data[2] as usize) << 8) | (data[3] as usize),
+        height: ((data[4] as usize) << 24) | ((data[5] as usize) << 16) |
+            ((data[6] as usize) << 8) | (data[7] as usize),
         bit_depth: data[8],
         color_type: data[9],
         compression_method: data[10],
@@ -221,12 +253,104 @@ fn parse_ihdr_data(data: Vec<u8>) -> PNGInfo {
     };
 }
 
-fn decompress_idat_data(data: Vec<u8>) -> Vec<u8> {
-    // TODO Implement this properly
-    println!("Started decompressing IDAT chunk...");
-    let decompressed = miniz_oxide::inflate::decompress_to_vec_zlib(data.as_slice()).expect("Failed to decompress!");
-    println!("Finished decompressing IDAT chunk");
-    return decompressed
+fn decompress_data(data: Vec<u8>) -> Vec<u8> {
+    return miniz_oxide::inflate::decompress_to_vec_zlib(data.as_slice()).expect("Failed to decompress!");
+}
+
+fn compress_data(data: Vec<u8>) -> Vec<u8> {
+    return miniz_oxide::deflate::compress_to_vec_zlib(data.as_slice(), DEFAULT_COMPRESSION_LEVEL);
+}
+
+fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
+    // Unfilters and deserializes data, thus removing filter type byte from the
+    // beginning of each scanline
+    let mut unfiltered: Vec<u8> = Vec::with_capacity(data.len() - info.height);
+    let bytes_per_pixel: usize = compute_bytes_per_pixel(&info);
+    let stride: usize = info.width * bytes_per_pixel;
+    for row in 0..info.height {
+        let filter_type = data[row * (stride + 1)];
+        match filter_type {
+            0 => {  // no change
+                for col in 0..stride {
+                    unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                }
+            },
+            1 => {  // sub
+                unfiltered.push(data[row * (stride + 1) + 1]);
+                for col in 1..stride {
+                    let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                    unfiltered.push((orig + unfiltered[row * stride + col - 1] as u32) as u8);
+                }
+            },
+            2 => {  // up
+                if row == 0 {
+                    for col in 0..stride {
+                        unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                    }
+                } else {
+                    for col in 0..stride {
+                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        unfiltered.push((orig + unfiltered[(row - 1) * stride + col] as u32) as u8);
+                    }
+                }
+            },
+            3 => {  // average
+                for col in 0..stride {
+                    let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                    let mut sum: u32 = 0;
+                    if col > 0 {
+                        sum += unfiltered[row * stride + col - 1] as u32;
+                    }
+                    if row > 0 {
+                        sum += unfiltered[(row - 1) * stride + col] as u32;
+                    }
+                    unfiltered.push((orig + (sum >> 1)) as u8);
+                }
+            },
+            4 => {  // Paeth predictor
+                for col in 0..stride {
+                    let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                    let a: i32 = if col > 0 {
+                        unfiltered[row * stride + col - 1] as i32 } else { 0 };
+                    let b: i32 = if row > 0 {
+                        unfiltered[(row - 1) * stride + col] as i32 } else { 0 };
+                    let c: i32 = if row > 0 && col > 0 {
+                        unfiltered[(row - 1) * stride + col - 1] as i32 } else { 0 };
+                    let p: i32 = a + b - c;
+                    let result: u32;
+                    let mut pa: i32 = p - a;
+                    pa *= (pa >> 31) | 1;   // take absolute value of pa
+                    let mut pb: i32 = p - b;
+                    pb *= (pb >> 31) | 1;   // take absolute value of pb
+                    let mut pc: i32 = p - c;
+                    pc *= (pc >> 31) | 1;   // take absolute value of pc
+                    if pa <= pb && pa <= pc {
+                        result = a as u32;
+                    } else if pb <= pc {
+                        result = b as u32;
+                    } else {
+                        result = c as u32;
+                    }
+                    unfiltered.push((orig + result) as u8);
+                }
+            },
+            _ => panic!("Invalid filter type {:?} for row {:?}", filter_type, row),
+        }
+    }
+    return unfiltered;
+}
+
+fn filter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
+    // Filters data and inserts filter type byte for each scanline
+    let mut filtered: Vec<u8> = Vec::with_capacity(data.len() + info.height);
+    for row in 0..info.height {
+        // For now, always use filter type 0 -- no-op
+        filtered.push(0);
+        for col in 0..info.width {
+            filtered.push(data[row * info.width + col]);
+        }
+    }
+    return filtered;
 }
 
 extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackFrame) {
@@ -286,30 +410,29 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
 
     let png_info = parse_ihdr_data(ihdr_data);
 
-    assert!(png_info.compression_method == 0);  // png only supports 0
-    assert!(png_info.filter_method == 0);       // png only supports 0
-    assert!(check_bit_depth_valid(&png_info) == true);
+    assert!(check_png_info_valid(&png_info));
 
-    let decompressed_data = decompress_idat_data(idat_data);
-    println!("Decompressed data from IDAT blocks");
-    /*
-    for byte in decompressed_data {
+    let decompressed_data = decompress_data(idat_data);
+    println!("Decompressed data from IDAT blocks:");
+    for byte in &decompressed_data {
         print!("{:02x?} ", byte);
     }
     print!("\n");
-    */
 
     let expected_size = compute_total_data_bytes(&png_info);
     println!("IDAT decompressed data size equals expected size? {:?}", expected_size == decompressed_data.len());
 
-    /*
     let unfiltered_data = unfilter_data(&png_info, decompressed_data);
+    println!("Unfiltered the data:");
+    for byte in unfiltered_data {
+        print!("{:02x?} ", byte);
+    }
+    print!("\n");
 
-    let deserialized_data = deserialize_data(&png_info, unfiltered_data);
-
+    /*
     let raw_data = match png_info.interlace_method {
         0 => deserialized_data,
-        1 => dinterlace_data(&png_info, deserialized_data),
+        1 => deinterlace_data(&png_info, deserialized_data),
         _ => panic!("Invalid interlace method"),
     };
 
