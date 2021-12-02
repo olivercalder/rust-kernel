@@ -20,6 +20,7 @@ pub mod gdt;
 pub mod memory;
 pub mod allocator;
 pub mod task;
+pub mod png;
 
 #[cfg(test)]
 use bootloader::{BootInfo, entry_point};
