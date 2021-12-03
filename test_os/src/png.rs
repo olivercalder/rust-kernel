@@ -18,6 +18,8 @@ const INDEXED_COLOR: u8 = 3;
 const GREYSCALE_WITH_ALPHA: u8 = 4;
 const TRUECOLOR_WITH_ALPHA: u8 = 6;
 
+const PLTE_CHANNELS: usize = 3;
+
 const DEFAULT_COMPRESSION_LEVEL: u8 = 3;
 
 struct Chunk {
@@ -89,7 +91,7 @@ fn check_png_info_valid(info: &PNGInfo) -> bool {
 fn compute_bytes_per_pixel(info: &PNGInfo) -> usize {
     let channels = channel_count(info.color_type);
     let bits_per_pixel = info.bit_depth as usize * channels;
-    bits_per_pixel / 8
+    bits_per_pixel >> 3
 }
 
 fn compute_total_data_bytes(info: &PNGInfo) -> usize {
@@ -102,6 +104,23 @@ fn decompress_data(data: Vec<u8>) -> Vec<u8> {
 
 fn compress_data(data: Vec<u8>) -> Vec<u8> {
     return miniz_oxide::deflate::compress_to_vec_zlib(data.as_slice(), DEFAULT_COMPRESSION_LEVEL);
+}
+
+fn paeth_predictor(a: u8, b: u8, c: u8) -> u8 {
+    let p: i32 = a as i32 + b as i32 - c as i32;
+    let mut pa: i32 = p - a as i32;
+    let mut pb: i32 = p - b as i32;
+    let mut pc: i32 = p - c as i32;
+    pa *= (pa >> 31) | 1;
+    pb *= (pb >> 31) | 1;
+    pc *= (pc >> 31) | 1;
+    if pa <= pb && pa <= pc {
+        a
+    } else if pb <= pc {
+        b
+    } else {
+        c
+    }
 }
 
 fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
@@ -144,47 +163,239 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                 }
             },
             3 => {  // average
-                for col in 0..stride {
-                    let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                    let mut sum: u32 = 0;
-                    if col >= bytes_per_pixel {
-                        sum += unfiltered[row * stride + col - bytes_per_pixel] as u32;
+                if row == 0 {
+                    for col in 0..bytes_per_pixel {
+                        unfiltered.push(data[row * (stride + 1) + 1 + col]);
                     }
-                    if row > 0 {
-                        sum += unfiltered[(row - 1) * stride + col] as u32;
+                    for col in bytes_per_pixel..stride {
+                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let left: u32 = unfiltered[row * stride + col - bytes_per_pixel] as u32;
+                        unfiltered.push((orig + (left >> 1)) as u8);
                     }
-                    unfiltered.push((orig + (sum >> 1)) as u8);
+                } else {
+                    for col in 0..bytes_per_pixel {
+                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let up: u32 = unfiltered[(row - 1) * stride + col] as u32;
+                        unfiltered.push((orig + (up >> 1)) as u8);
+                    }
+                    for col in bytes_per_pixel..stride {
+                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let left: u32 = unfiltered[row * stride + col - bytes_per_pixel] as u32;
+                        let up: u32 = unfiltered[(row - 1) * stride + col] as u32;
+                        unfiltered.push((orig + ((left + up) >> 1)) as u8);
+                    }
                 }
             },
             4 => {  // Paeth predictor
-                for col in 0..stride {
-                    let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                    let a: i32 = if col >= bytes_per_pixel {
-                        unfiltered[row * stride + col - bytes_per_pixel] as i32 } else { 0 };
-                    let b: i32 = if row > 0 {
-                        unfiltered[(row - 1) * stride + col] as i32 } else { 0 };
-                    let c: i32 = if row > 0 && col >= bytes_per_pixel {
-                        unfiltered[(row - 1) * stride + col - bytes_per_pixel] as i32 } else { 0 };
-                    let p: i32 = a + b - c;
-                    let result: u32;
-                    let mut pa: i32 = p - a;
-                    pa *= (pa >> 31) | 1;   // take absolute value of pa
-                    let mut pb: i32 = p - b;
-                    pb *= (pb >> 31) | 1;   // take absolute value of pb
-                    let mut pc: i32 = p - c;
-                    pc *= (pc >> 31) | 1;   // take absolute value of pc
-                    if pa <= pb && pa <= pc {
-                        result = a as u32;
-                    } else if pb <= pc {
-                        result = b as u32;
-                    } else {
-                        result = c as u32;
+                if row == 0 {
+                    for col in 0..bytes_per_pixel {
+                        unfiltered.push(data[row * (stride + 1) + 1 + col]);
                     }
-                    unfiltered.push((orig + result) as u8);
+                    for col in bytes_per_pixel..stride {
+                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let result: u32 = paeth_predictor(
+                            unfiltered[row * stride + col - bytes_per_pixel],
+                            0, 0) as u32;
+                        unfiltered.push((orig + result) as u8);
+                    }
+                } else {
+                    for col in 0..bytes_per_pixel {
+                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let result: u32 = paeth_predictor(
+                            0, unfiltered[(row - 1) * stride + col], 0) as u32;
+                        unfiltered.push((orig + result) as u8);
+                    }
+                    for col in bytes_per_pixel..stride {
+                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let result: u32 = paeth_predictor(
+                            unfiltered[row * stride + col - bytes_per_pixel],
+                            unfiltered[(row - 1) * stride + col],
+                            unfiltered[(row - 1) * stride + col - bytes_per_pixel],
+                            ) as u32;
+                        unfiltered.push((orig + result) as u8);
+                    }
                 }
             },
             _ => panic!("Invalid filter type {:?} for row {:?}", filter_type, row),
         }
+    }
+    return unfiltered;
+}
+
+fn unfilter_interlaced_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
+    assert!(info.interlace_method == 1);
+    let mut base_offset: usize = 8;
+    let base_interval: usize = 8;
+    let mut h_offset: usize;
+    let mut v_offset: usize = 0;
+    let mut h_interval: usize;
+    let mut v_interval: usize = 8;
+    let bytes_per_pixel: usize = compute_bytes_per_pixel(&info);
+    let stride: usize = info.width * bytes_per_pixel;
+    let mut index: usize = 0;
+    let mut unfiltered: Vec<u8> = Vec::with_capacity(info.height * info.width * bytes_per_pixel);
+    // pass h_offset    v_offset    h_interval  v_interval
+    // 0    0           0           8           8
+    // 1    4           0           8           8
+    // 2    0           4           4           8
+    // 3    2           0           4           4
+    // 4    0           2           2           4
+    // 5    1           0           2           2
+    // 6    0           1           1           2
+    for pass in 0..7 {
+        base_offset >>= pass & 1;
+        h_offset = base_offset * (pass & 1); // if * is faster than &, <<, and ^
+        // h_offset = offset & (offset << ((pass & 1) ^ 1));
+        h_interval = base_interval >> (pass >> 1);
+        let pass_height: usize = ((info.height - (v_offset + 1)) >> (pass >> 1)) + 1;  // division is slow
+        // let pass_height: usize = ((info.height - (v_offset + 1)) / v_interval) + 1;
+        let pass_width: usize = ((info.width - (h_offset + 1)) >> (pass >> 1)) + 1;   // division is slow
+        // let pass_width: usize = ((info.width - (h_offset + 1)) / h_interval) + 1;
+        let mut row = v_offset;
+        let row_interval: usize = v_interval * stride;  // byte interval between rows
+        for _ in 0..pass_height {
+            let filter_type = data[index];
+            index += 1;
+            //let mut pixel_col = h_offset;
+            let mut start = row * stride + h_offset * bytes_per_pixel;
+            let col_interval = h_interval * bytes_per_pixel;    // byte interval between cols
+            match filter_type {
+                0 => {  // no change
+                    for _ in 0..pass_width {
+                        for byte_location in start..start+bytes_per_pixel {
+                            unfiltered[byte_location] = data[index];
+                            index += 1;
+                        }
+                        start += col_interval;
+                    }
+                }
+                1 => {  // sub
+                    for byte_location in start..start+bytes_per_pixel {
+                        unfiltered[byte_location] = data[index];
+                        index += 1;
+                    }
+                    start += col_interval;
+                    for _ in 1..pass_width {
+                        for byte_location in start..start+bytes_per_pixel {
+                            unfiltered[byte_location] = (
+                                data[index] as u32 +
+                                unfiltered[byte_location - col_interval] as u32
+                                ) as u8;
+                            index += 1;
+                        }
+                        start += col_interval;
+                    }
+                },
+                2 => {  // up
+                    if row == v_offset {
+                        for _ in 0..pass_width {
+                            for byte_location in start..start+bytes_per_pixel {
+                                unfiltered[byte_location] = data[index];
+                                index += 1;
+                            }
+                            start += col_interval;
+                        }
+                    } else {
+                        for _ in 0..pass_width {
+                            for byte_location in start..start+bytes_per_pixel {
+                                unfiltered[byte_location] = (
+                                    data[index] as u32 +
+                                    unfiltered[byte_location - row_interval] as u32
+                                    ) as u8;
+                                index += 1;
+                            }
+                            start += col_interval;
+                        }
+                    }
+                },
+                3 => {  // average
+                    if row == v_offset {
+                        for byte_location in start..start+bytes_per_pixel {
+                            unfiltered[byte_location] = data[index];
+                            index += 1;
+                        }
+                        start += col_interval;
+                        for _ in 1..pass_width {
+                            for byte_location in start..start+bytes_per_pixel {
+                                unfiltered[byte_location] = (
+                                    data[index] as u32 +
+                                    (unfiltered[byte_location - col_interval] as u32 >> 1)
+                                    ) as u8;
+                                index += 1;
+                            }
+                            start += col_interval;
+                        }
+                    } else {
+                        for byte_location in start..start+bytes_per_pixel {
+                            unfiltered[byte_location] = (
+                                data[index] as u32 +
+                                (unfiltered[byte_location - row_interval] as u32 >> 1)
+                                ) as u8;
+                            index += 1;
+                        }
+                        start += col_interval;
+                        for _ in 1..pass_width {
+                            for byte_location in start..start+bytes_per_pixel {
+                                unfiltered[byte_location] = (
+                                    data[index] as u32 +
+                                    (unfiltered[byte_location - col_interval] as u32 +
+                                    unfiltered[byte_location - row_interval] as u32
+                                    ) >> 1) as u8;
+                                index += 1;
+                            }
+                            start += col_interval;
+                        }
+                    }
+                },
+                4 => {  // Paeth predictor
+                    if row == v_offset {
+                        for byte_location in start..start+bytes_per_pixel {
+                            unfiltered[byte_location] = data[index];
+                            index += 1;
+                        }
+                        start += col_interval;
+                        for _ in 1..pass_width {
+                            for byte_location in start..start+bytes_per_pixel {
+                                unfiltered[byte_location] = (
+                                    data[index] as u32 +
+                                    paeth_predictor(unfiltered[byte_location - col_interval], 0, 0) as u32
+                                    ) as u8;
+                                index += 1;
+                            }
+                            start += col_interval;
+                        }
+                    } else {
+                        for byte_location in start..start+bytes_per_pixel {
+                            unfiltered[byte_location] = (
+                                data[index] as u32 +
+                                paeth_predictor(0, unfiltered[byte_location - row_interval], 0) as u32
+                                ) as u8;
+                            index += 1;
+                        }
+                        start += col_interval;
+                        for _ in 1..pass_width {
+                            for byte_location in start..start+bytes_per_pixel {
+                                unfiltered[byte_location] = (
+                                    data[index] as u32 +
+                                    paeth_predictor(
+                                        unfiltered[byte_location - col_interval],
+                                        unfiltered[byte_location - row_interval],
+                                        unfiltered[byte_location - (col_interval + row_interval)],
+                                        ) as u32
+                                    ) as u8;
+                                index += 1;
+                            }
+                            start += col_interval
+                        }
+                    }
+                },
+                _ => panic!("Invalid filter type {:?} for row {:?} in pass {:?}",
+                            filter_type, (row - v_offset) / v_interval, pass),
+            }
+            row += v_interval;
+        }
+        v_offset = h_offset;
+        v_interval = h_interval;
     }
     return unfiltered;
 }
@@ -298,8 +509,15 @@ fn parse_idat(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
 }
 
 fn deindex_color(idat_data: Vec<u8>, plte_data: Vec<u8>) -> Vec<u8> {
-    // TODO
-    return Vec::new();
+    assert!(plte_data.len() % 3 == 0);
+    let mut color_data: Vec<u8> = Vec::with_capacity(idat_data.len() * PLTE_CHANNELS);
+    for plte_index in idat_data {
+        let index: usize = plte_index as usize;
+        for color_index in index*PLTE_CHANNELS..index*PLTE_CHANNELS+PLTE_CHANNELS {
+            color_data.push(plte_data[color_index]);
+        }
+    }
+    color_data
 }
 
 fn compute_max_passes_to_fit(info: &PNGInfo, max_width: usize, max_height: usize) -> usize {
@@ -400,15 +618,19 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
         }
     }
 
-    let unfiltered_data = unfilter_data(&png_info, decompressed_data);
+    let unfiltered_data: Vec<u8> = if png_info.interlace_method == 1 {
+        unfilter_interlaced_data(&png_info, decompressed_data)
+    } else {
+        unfilter_data(&png_info, decompressed_data)
+    };
     println!("Unfiltered the data:");
 
-    let color_data: Vec<u8>;
-    if png_info.color_type == INDEXED_COLOR {
-        color_data = deindex_color(unfiltered_data, plte_data);
+    let color_data: Vec<u8> = if png_info.color_type == INDEXED_COLOR {
+        deindex_color(unfiltered_data, plte_data)
     } else {
-        color_data = unfiltered_data;
-    }
+        unfiltered_data
+    };
+    println!("{:?}", color_data);
     return color_data;
 
     /*
