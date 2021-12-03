@@ -1,6 +1,7 @@
 use crate::{print, println, vga_buffer};
 use alloc::vec::Vec;
 
+
 // All png files must begin with bytes: [0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'];
 const SIGNATURE_LENGTH: usize = 8;
 pub const PNG_SIGNATURE: [u8; SIGNATURE_LENGTH] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -22,6 +23,7 @@ const PLTE_CHANNELS: usize = 3;
 
 const DEFAULT_COMPRESSION_LEVEL: u8 = 3;
 
+
 struct Chunk {
     length: u32,
     type_arr: [u8; 4],
@@ -39,6 +41,7 @@ struct PNGInfo {
     interlace_method: u8,
 }
 
+
 fn channel_count(color_type: u8) -> usize {
     match color_type {
         GREYSCALE => 1,
@@ -50,6 +53,7 @@ fn channel_count(color_type: u8) -> usize {
     }
 }
 
+
 fn check_color_type_valid(color_type: u8) -> bool {
     match color_type {
         GREYSCALE => true,
@@ -60,6 +64,7 @@ fn check_color_type_valid(color_type: u8) -> bool {
         _ => false,
     }
 }
+
 
 fn check_bit_depth_valid(depth: u8, color_type: u8) -> bool {
     let depth_options: Vec<u8> = match color_type {
@@ -73,9 +78,11 @@ fn check_bit_depth_valid(depth: u8, color_type: u8) -> bool {
     depth_options.contains(&depth)
 }
 
+
 fn check_interlace_method_valid(method: u8) -> bool {
     return (method & !1) == 0
 }
+
 
 fn check_png_info_valid(info: &PNGInfo) -> bool {
     (check_color_type_valid(info.color_type) == true)
@@ -88,23 +95,28 @@ fn check_png_info_valid(info: &PNGInfo) -> bool {
     && (info.bit_depth == 8)        // For now, only accept bit depth of 8
 }
 
+
 fn compute_bytes_per_pixel(info: &PNGInfo) -> usize {
     let channels = channel_count(info.color_type);
     let bits_per_pixel = info.bit_depth as usize * channels;
     bits_per_pixel >> 3
 }
 
+
 fn compute_total_data_bytes(info: &PNGInfo) -> usize {
     info.height * (1 + compute_bytes_per_pixel(&info) * info.width)
 }
+
 
 fn decompress_data(data: Vec<u8>) -> Vec<u8> {
     return miniz_oxide::inflate::decompress_to_vec_zlib(data.as_slice()).expect("Failed to decompress!");
 }
 
+
 fn compress_data(data: Vec<u8>) -> Vec<u8> {
     return miniz_oxide::deflate::compress_to_vec_zlib(data.as_slice(), DEFAULT_COMPRESSION_LEVEL);
 }
+
 
 fn paeth_predictor(a: u8, b: u8, c: u8) -> u8 {
     let p: i32 = a as i32 + b as i32 - c as i32;
@@ -123,65 +135,65 @@ fn paeth_predictor(a: u8, b: u8, c: u8) -> u8 {
     }
 }
 
+
 fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     // Unfilters and deserializes data, thus removing filter type byte from the
     // beginning of each scanline
     assert!(info.interlace_method == 0);
-    // If interlace method is 1, then scanlines vary in width by pass, so need
-    // to compute the width of the current scanline according to the current
-    // pass number
     let mut unfiltered: Vec<u8> = Vec::with_capacity(data.len() - info.height);
     let bytes_per_pixel: usize = compute_bytes_per_pixel(&info);
     let stride: usize = info.width * bytes_per_pixel;
     for row in 0..info.height {
-        let filter_type = data[row * (stride + 1)];
+        let orig_start: usize = row * (stride + 1) + 1; // first byte index into data for row
+        let unf_start: usize = row * stride;            // first byte index into unfiltered for row
+        let filter_type = data[orig_start - 1];         // filter type precedes first byte of row
         match filter_type {
             0 => {  // no change
                 for col in 0..stride {
-                    unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                    unfiltered.push(data[orig_start + col]);
                 }
             },
             1 => {  // sub
                 for col in 0..bytes_per_pixel {
-                    unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                    unfiltered.push(data[orig_start + col]);
                 }
                 for col in bytes_per_pixel..stride {
-                    let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                    unfiltered.push((orig + unfiltered[row * stride + col - bytes_per_pixel] as u32) as u8);
+                    let orig: u32 = data[orig_start + col] as u32;
+                    unfiltered.push((orig + unfiltered[unf_start - bytes_per_pixel + col] as u32) as u8);
                 }
             },
             2 => {  // up
                 if row == 0 {
                     for col in 0..stride {
-                        unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                        unfiltered.push(data[orig_start + col]);
                     }
                 } else {
                     for col in 0..stride {
-                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                        unfiltered.push((orig + unfiltered[(row - 1) * stride + col] as u32) as u8);
+                        let orig: u32 = data[orig_start + col] as u32;
+                        unfiltered.push((orig + unfiltered[unf_start - stride + col] as u32) as u8);
                     }
                 }
             },
             3 => {  // average
                 if row == 0 {
                     for col in 0..bytes_per_pixel {
-                        unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                        unfiltered.push(data[orig_start + col]);
                     }
                     for col in bytes_per_pixel..stride {
-                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                        let left: u32 = unfiltered[row * stride + col - bytes_per_pixel] as u32;
+                        let orig: u32 = data[orig_start + col] as u32;
+                        let left: u32 = unfiltered[unf_start - bytes_per_pixel + col] as u32;
                         unfiltered.push((orig + (left >> 1)) as u8);
                     }
                 } else {
                     for col in 0..bytes_per_pixel {
-                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                        let up: u32 = unfiltered[(row - 1) * stride + col] as u32;
+                        let orig: u32 = data[orig_start + col] as u32;
+                        let up: u32 = unfiltered[unf_start - stride + col] as u32;
                         unfiltered.push((orig + (up >> 1)) as u8);
                     }
                     for col in bytes_per_pixel..stride {
-                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
-                        let left: u32 = unfiltered[row * stride + col - bytes_per_pixel] as u32;
-                        let up: u32 = unfiltered[(row - 1) * stride + col] as u32;
+                        let orig: u32 = data[orig_start + col] as u32;
+                        let left: u32 = unfiltered[unf_start - bytes_per_pixel + col] as u32;
+                        let up: u32 = unfiltered[unf_start - stride + col] as u32;
                         unfiltered.push((orig + ((left + up) >> 1)) as u8);
                     }
                 }
@@ -189,28 +201,28 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
             4 => {  // Paeth predictor
                 if row == 0 {
                     for col in 0..bytes_per_pixel {
-                        unfiltered.push(data[row * (stride + 1) + 1 + col]);
+                        unfiltered.push(data[orig_start + col]);
                     }
                     for col in bytes_per_pixel..stride {
-                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let orig: u32 = data[orig_start + col] as u32;
                         let result: u32 = paeth_predictor(
-                            unfiltered[row * stride + col - bytes_per_pixel],
+                            unfiltered[unf_start - bytes_per_pixel + col],
                             0, 0) as u32;
                         unfiltered.push((orig + result) as u8);
                     }
                 } else {
                     for col in 0..bytes_per_pixel {
-                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let orig: u32 = data[orig_start + col] as u32;
                         let result: u32 = paeth_predictor(
-                            0, unfiltered[(row - 1) * stride + col], 0) as u32;
+                            0, unfiltered[unf_start - stride + col], 0) as u32;
                         unfiltered.push((orig + result) as u8);
                     }
                     for col in bytes_per_pixel..stride {
-                        let orig: u32 = data[row * (stride + 1) + 1 + col] as u32;
+                        let orig: u32 = data[orig_start + col] as u32;
                         let result: u32 = paeth_predictor(
-                            unfiltered[row * stride + col - bytes_per_pixel],
-                            unfiltered[(row - 1) * stride + col],
-                            unfiltered[(row - 1) * stride + col - bytes_per_pixel],
+                            unfiltered[unf_start - bytes_per_pixel + col],
+                            unfiltered[unf_start - stride + col],
+                            unfiltered[unf_start - (stride + bytes_per_pixel) + col],
                             ) as u32;
                         unfiltered.push((orig + result) as u8);
                     }
@@ -221,6 +233,7 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     }
     return unfiltered;
 }
+
 
 fn unfilter_interlaced_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     assert!(info.interlace_method == 1);
@@ -256,7 +269,6 @@ fn unfilter_interlaced_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
         for _ in 0..pass_height {
             let filter_type = data[index];
             index += 1;
-            //let mut pixel_col = h_offset;
             let mut start = row * stride + h_offset * bytes_per_pixel;
             let col_interval = h_interval * bytes_per_pixel;    // byte interval between cols
             match filter_type {
@@ -400,6 +412,7 @@ fn unfilter_interlaced_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     return unfiltered;
 }
 
+
 fn filter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     // Filters data and inserts filter type byte for each scanline
     assert!(info.interlace_method == 0);
@@ -416,10 +429,12 @@ fn filter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     return filtered;
 }
 
+
 fn get_size_from_bytes(number_slice: &[u8]) -> usize {
     ((number_slice[0] as usize) << 24) | ((number_slice[1] as usize) << 16)
         | ((number_slice[2] as usize) << 8) | (number_slice[3] as usize)
 }
+
 
 /// Verify that the given raw data contains the necessary signature and IHDR
 /// chunk, and return the information given by that IHDR chunk as a PNGInfo
@@ -452,6 +467,7 @@ fn parse_ihdr(raw_data: &Vec<u8>) -> Option<PNGInfo> {
     })
 }
 
+
 /// Searches for and parses the PLTE chunk, if it exists, from the raw data.
 /// Stops searching once it sees an IDAT chunk, since the PLTE chunk must
 /// precede the first IDAT chunk.
@@ -478,6 +494,7 @@ fn parse_plte(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
     }
     Some(plte_data)
 }
+
 
 /// Searches for and parses the IDAT chunks from the raw data. By the PNG
 /// specification, there must exist at least one IDAT chunk, and if there are
@@ -508,6 +525,7 @@ fn parse_idat(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
     Some(idat_data)
 }
 
+
 fn deindex_color(idat_data: Vec<u8>, plte_data: Vec<u8>) -> Vec<u8> {
     assert!(plte_data.len() % 3 == 0);
     let mut color_data: Vec<u8> = Vec::with_capacity(idat_data.len() * PLTE_CHANNELS);
@@ -520,10 +538,12 @@ fn deindex_color(idat_data: Vec<u8>, plte_data: Vec<u8>) -> Vec<u8> {
     color_data
 }
 
+
 fn compute_max_passes_to_fit(info: &PNGInfo, max_width: usize, max_height: usize) -> usize {
     // TODO
     return 8;
 }
+
 
 fn generate_indexed_thumbnail_using_passes(orig_info: PNGInfo, idat_data: Vec<u8>,
                                            plte_data: Vec<u8>, passes: usize) -> Vec<u8> {
@@ -531,10 +551,12 @@ fn generate_indexed_thumbnail_using_passes(orig_info: PNGInfo, idat_data: Vec<u8
     return Vec::new();
 }
 
+
 fn generate_thumbnail_using_passes(orig_info: PNGInfo, color_data: Vec<u8>, passes: usize) -> Vec<u8> {
     // TODO
     return Vec::new();
 }
+
 
 fn generate_thumbnail_using_averages(orig_info: PNGInfo, color_data: Vec<u8>,
                                      max_width: usize, max_height: usize,
@@ -542,6 +564,7 @@ fn generate_thumbnail_using_averages(orig_info: PNGInfo, color_data: Vec<u8>,
     // TODO
     return Vec::new();
 }
+
 
 /// Generates a thumbnail for the image represented by the given raw bytes.
 ///

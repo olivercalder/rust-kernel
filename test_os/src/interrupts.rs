@@ -149,7 +149,6 @@ fn read_serial_png() -> Option<Vec<u8>> {
             println!("Read IHDR chunk");
         } else if &type_arr == "IDAT".as_bytes() {
             print!("Read IDAT chunk... ");
-            // TODO: take advantage of fact that IDAT chunks must be consecutive
         } else {
             println!("Read chunk with unexpected type: {:?}", type_arr);
         }
