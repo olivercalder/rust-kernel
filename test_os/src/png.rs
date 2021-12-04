@@ -1,4 +1,4 @@
-use crate::{print, println, vga_buffer};
+use crate::println;
 use alloc::vec::Vec;
 
 
@@ -11,7 +11,11 @@ const DATA_OFFSET: usize = TYPE_OFFSET + 4; // length bytes + type bytes
 const CRC_LENGTH: usize = 4;
 
 const IHDR_DATA_LENGTH: usize = 13;
-const FIRST_CHUNK_AFTER_IHDR: usize = SIGNATURE_LENGTH + DATA_OFFSET + IHDR_DATA_LENGTH + CRC_LENGTH;
+const IHDR_TOTAL_LENGTH: usize = DATA_OFFSET + IHDR_DATA_LENGTH + CRC_LENGTH;
+
+const IEND_TOTAL_LENGTH: usize = DATA_OFFSET + CRC_LENGTH;
+
+const FIRST_CHUNK_AFTER_IHDR: usize = SIGNATURE_LENGTH + IHDR_TOTAL_LENGTH;
 
 const GREYSCALE: u8 = 0;
 const TRUECOLOR: u8 = 2;
@@ -22,6 +26,8 @@ const TRUECOLOR_WITH_ALPHA: u8 = 6;
 const PLTE_CHANNELS: usize = 3;
 
 const DEFAULT_COMPRESSION_LEVEL: u8 = 3;
+
+const FORCED_BIT_DEPTH: u8 = 8;
 
 
 struct Chunk {
@@ -39,6 +45,14 @@ struct PNGInfo {
     compression_method: u8,
     filter_method: u8,
     interlace_method: u8,
+}
+
+struct ThumbnailGenerationInfo {
+    width: usize,
+    height: usize,
+    ratio: f64,             // ratio of thumbnail size to original size
+    x_pixel_offset: usize,  // x pixel offset into original image
+    y_pixel_offset: usize,  // y pixel offset into original image
 }
 
 
@@ -91,8 +105,8 @@ fn check_png_info_valid(info: &PNGInfo) -> bool {
     && (info.filter_method == 0)        // png only supports 0
     && (check_interlace_method_valid(info.interlace_method) == true)
 
-    && (info.color_type & 1 == 0)   // For now, do not allow indexed-color
-    && (info.bit_depth == 8)        // For now, only accept bit depth of 8
+    && (info.color_type & 1 == 0)           // For now, do not allow indexed-color
+    && (info.bit_depth == FORCED_BIT_DEPTH) // For now, only accept bit depth of 8
 }
 
 
@@ -159,7 +173,7 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                 }
                 for col in bytes_per_pixel..stride {
                     let orig: u32 = data[orig_start + col] as u32;
-                    unfiltered.push((orig + unfiltered[unf_start - bytes_per_pixel + col] as u32) as u8);
+                    unfiltered.push((orig + unfiltered[(unf_start + col) - bytes_per_pixel] as u32) as u8);
                 }
             },
             2 => {  // up
@@ -539,6 +553,134 @@ fn deindex_color(idat_data: Vec<u8>, plte_data: Vec<u8>) -> Vec<u8> {
 }
 
 
+fn compute_pixel_offset(orig_size: usize, new_size: usize, ratio: f64) -> usize {
+    let scaled_new_size: f64 = new_size as f64 / ratio;
+    let leftover: f64 = orig_size as f64 - scaled_new_size;
+    let offset: f64 = leftover / 2.0;
+    return offset as usize;
+}
+
+
+fn compute_thumbnail_generation_info(orig_info: &PNGInfo,
+                                     max_width: usize,
+                                     max_height: usize,
+                                     zoom_to_fill: bool
+                                     ) -> ThumbnailGenerationInfo {
+    let mut generation_info: ThumbnailGenerationInfo = ThumbnailGenerationInfo {
+        width: 0, height: 0, ratio: 0.0, x_pixel_offset: 0, y_pixel_offset: 0
+    };
+    let h_ratio: f64 = max_width as f64 / orig_info.width as f64;
+    let v_ratio: f64 = max_height as f64 / orig_info.height as f64;
+    if zoom_to_fill {
+        generation_info.width = max_width;
+        generation_info.height = max_height;
+        if h_ratio > v_ratio {  // scale to fit max_width
+            generation_info.ratio = h_ratio;
+            generation_info.x_pixel_offset = 0;
+            generation_info.y_pixel_offset =
+                compute_pixel_offset(orig_info.height, max_height, h_ratio);
+        } else {    // scale to fit max_height
+            generation_info.ratio = v_ratio;
+            generation_info.x_pixel_offset =
+                compute_pixel_offset(orig_info.width, max_width, v_ratio);
+            generation_info.y_pixel_offset = 0;
+        }
+    } else {
+        generation_info.x_pixel_offset = 0;
+        generation_info.y_pixel_offset = 0;
+        if h_ratio < v_ratio {  // scale to fit max_width
+            generation_info.ratio = h_ratio;
+            generation_info.width = max_width;
+            generation_info.height = (orig_info.height as f64 * h_ratio) as usize;
+        } else {    // scale to fit max_height
+            generation_info.ratio = v_ratio;
+            generation_info.width = (orig_info.width as f64 * v_ratio) as usize;
+            generation_info.height = max_height;
+        }
+    }
+    return generation_info;
+}
+
+
+fn shrink_image(orig_info: &PNGInfo, orig_data: Vec<u8>,
+                new_width: usize, new_height: usize, ratio: f64,
+                x_pixel_offset: usize, y_pixel_offset: usize) -> Vec<u8> {
+    let bytes_per_pixel = compute_bytes_per_pixel(&orig_info);
+    let new_pixels: usize = new_width * new_height;
+    let new_bytes: usize = new_pixels * bytes_per_pixel;
+    let mut new_data: Vec<u8> = Vec::with_capacity(new_bytes);
+    let mut sums: Vec<u16> = Vec::with_capacity(new_bytes);
+    let mut counts: Vec<u16> = Vec::with_capacity(new_bytes);
+    for _ in 0..new_bytes {
+        sums.push(0u16);
+    }
+    for _ in 0..new_pixels {
+        counts.push(0u16);
+    }
+    let bytes_per_orig_row: usize = orig_info.width * bytes_per_pixel;
+    let x_byte_offset: usize = x_pixel_offset * bytes_per_pixel;
+    let y_byte_offset: usize = y_pixel_offset * bytes_per_orig_row;
+    let orig_row_limit: usize = (new_height as f64 / ratio) as usize;
+    let orig_col_limit: usize = (new_width as f64 / ratio) as usize;
+    for row in 0..orig_row_limit {
+        let orig_row_start_byte: usize = row * bytes_per_orig_row + y_byte_offset + x_byte_offset;
+        let new_row_start_index: usize = (row as f64 * ratio) as usize * new_width;
+        for col in 0..orig_col_limit {
+            let orig_col_start_byte: usize = col * bytes_per_pixel + orig_row_start_byte;
+            let new_col_index: usize = (col as f64 * ratio) as usize;
+            let new_index: usize = new_row_start_index + new_col_index;
+            let new_col_start_byte: usize = new_index * bytes_per_pixel;
+            for i in 0..bytes_per_pixel {
+                sums[new_col_start_byte + i] += orig_data[orig_col_start_byte + i] as u16;
+            }
+            counts[new_index] += 1;
+        }
+    }
+    for byte_index in 0..new_bytes {
+        new_data.push((sums[byte_index] / counts[byte_index / bytes_per_pixel]) as u8);
+        // might be faster to use nested loop through bytes_per_pixel per column, to avoid second
+        // division
+    }
+    return new_data;
+}
+
+
+fn stretch_image(orig_info: &PNGInfo, orig_data: Vec<u8>,
+                 new_width: usize, new_height: usize, ratio: f64,
+                 x_pixel_offset: usize, y_pixel_offset: usize) -> Vec<u8> {
+    let bytes_per_pixel = compute_bytes_per_pixel(&orig_info);
+    let new_pixels: usize = new_width * new_height;
+    let new_bytes: usize = new_pixels * bytes_per_pixel;
+    let mut new_data: Vec<u8> = Vec::with_capacity(new_bytes);
+    for _ in 0..new_bytes {
+        new_data.push(0u8);
+    }
+    println!("Stretching image to {:?}x{:?} ({:?} bytes)", new_height, new_width, new_bytes);
+    let bytes_per_orig_row: usize = orig_info.width * bytes_per_pixel;
+    let bytes_per_new_row: usize = new_width * bytes_per_pixel;
+    for row in 0..new_height {
+        let new_row_start_byte: usize = row * bytes_per_new_row;
+        let orig_row: usize = (row as f64 / ratio) as usize + y_pixel_offset;
+        let orig_row_start_byte: usize = orig_row * bytes_per_orig_row; // excluding the x byte offset
+        for col in 0..new_width {
+            let orig_col: usize = (col as f64 / ratio) as usize + x_pixel_offset;
+            let orig_col_start_byte = orig_col * bytes_per_pixel + orig_row_start_byte;
+            let new_col_start_byte: usize = col * bytes_per_pixel + new_row_start_byte;
+            for i in 0..bytes_per_pixel {
+                new_data[new_col_start_byte + i] = orig_data[orig_col_start_byte + i];
+            }
+        }
+    }
+    return new_data;
+}
+
+
+fn construct_png(thumbnail_info: PNGInfo, compressed_data: Vec<u8>) -> Vec<u8> {
+    // TODO
+    return Vec::new();
+}
+
+
 fn compute_max_passes_to_fit(info: &PNGInfo, max_width: usize, max_height: usize) -> usize {
     // TODO
     return 8;
@@ -553,14 +695,6 @@ fn generate_indexed_thumbnail_using_passes(orig_info: PNGInfo, idat_data: Vec<u8
 
 
 fn generate_thumbnail_using_passes(orig_info: PNGInfo, color_data: Vec<u8>, passes: usize) -> Vec<u8> {
-    // TODO
-    return Vec::new();
-}
-
-
-fn generate_thumbnail_using_averages(orig_info: PNGInfo, color_data: Vec<u8>,
-                                     max_width: usize, max_height: usize,
-                                     zoom_to_fill: bool) -> Vec<u8> {
     // TODO
     return Vec::new();
 }
@@ -585,7 +719,7 @@ fn generate_thumbnail_using_averages(orig_info: PNGInfo, color_data: Vec<u8>,
 /// If use_interlace is false (or the first pass already exceeds the given
 /// maximum dimensions), the image is deinterlaced and average colors are used
 /// to compute the thumbnail. In this case, zoom_to_fill determines whether the
-/// more or lessconstrained dimension is stretched to its corresponding maximum.
+/// more or less constrained dimension is stretched to its corresponding maximum.
 /// If zoom_to_fill is true, then the less constrained dimension is used,
 /// resulting in a thumbnail with size maximum_width x maximum_height; if
 /// zoom_to_fill is false, then the more constrained dimension is used,
@@ -599,9 +733,7 @@ fn generate_thumbnail_using_averages(orig_info: PNGInfo, color_data: Vec<u8>,
 pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
                           max_height: usize, use_interlace: bool,
                           zoom_to_fill: bool) -> Vec<u8> {
-    let png_info: PNGInfo;
-    let mut plte_data: Vec<u8> = Vec::with_capacity(0);
-    let idat_data: Vec<u8>;
+    let mut png_info: PNGInfo;
     match parse_ihdr(&raw_bytes) {
         Some(info) => png_info = info,
         None => return raw_bytes,   // Can't parse as PNG, so return original
@@ -616,13 +748,14 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     // pass_count < 8 if interlaced passes should be used to generate the
     // thumbnail rather than averaging pixel colors
 
+    let plte_data: Vec<u8>;
     if png_info.color_type == INDEXED_COLOR {
-        let palette_data: Vec<u8>;
         match parse_plte(&raw_bytes) {
             Some(data) => plte_data = data,
             None => return raw_bytes,   // Error or missing required PLTE chunk, so return original
         }
-    }
+    } else { plte_data = Vec::with_capacity(0); }
+    let idat_data: Vec<u8>;
     match parse_idat(&raw_bytes) {
         Some(data) => idat_data = data,
         None => return raw_bytes,   // Error or missing required IDAT chunk, so return original
@@ -641,30 +774,59 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
         }
     }
 
-    let unfiltered_data: Vec<u8> = if png_info.interlace_method == 1 {
-        unfilter_interlaced_data(&png_info, decompressed_data)
+    let unfiltered_data: Vec<u8>;
+    if png_info.interlace_method == 1 {
+        unfiltered_data = unfilter_interlaced_data(&png_info, decompressed_data);
+        png_info.interlace_method = 0;
     } else {
-        unfilter_data(&png_info, decompressed_data)
+        unfiltered_data = unfilter_data(&png_info, decompressed_data);
     };
     println!("Unfiltered the data:");
 
-    let color_data: Vec<u8> = if png_info.color_type == INDEXED_COLOR {
-        deindex_color(unfiltered_data, plte_data)
+    let color_data: Vec<u8>;
+    if png_info.color_type == INDEXED_COLOR {
+        color_data = deindex_color(unfiltered_data, plte_data);
+        png_info.color_type = TRUECOLOR;
     } else {
-        unfiltered_data
-    };
+        color_data = unfiltered_data;
+    }
     println!("{:?}", color_data);
-    return color_data;
 
-    /*
-    let raw_data = match png_info.interlace_method {
-        0 => unfiltered_data,
-        1 => deinterlace_data(&png_info, unfiltered_data),
-        _ => panic!("Invalid interlace method"),
+    let generation_info: ThumbnailGenerationInfo =
+        compute_thumbnail_generation_info(&png_info, max_width, max_height,
+                                          zoom_to_fill);
+    let thumbnail_color_data: Vec<u8> = if generation_info.ratio <= 1.0 {
+        shrink_image(&png_info,
+                     color_data,
+                     generation_info.width,
+                     generation_info.height,
+                     generation_info.ratio,
+                     generation_info.x_pixel_offset,
+                     generation_info.y_pixel_offset)
+    } else {
+        stretch_image(&png_info,
+                     color_data,
+                     generation_info.width,
+                     generation_info.height,
+                     generation_info.ratio,
+                     generation_info.x_pixel_offset,
+                     generation_info.y_pixel_offset)
     };
+    let thumbnail_info: PNGInfo = PNGInfo {
+        width: (generation_info.width),
+        height: (generation_info.height),
+        ..png_info
+    };
+    println!("Scaled original image by {:?}", generation_info.ratio);
+    println!("New color data:");
+    println!("{:?}", thumbnail_color_data);
 
-    let thumbnail_data = generate_thumbnail(&png_info, raw_data);
-    // don't bother interlacing output
+    let filtered_data: Vec<u8> = filter_data(&thumbnail_info, thumbnail_color_data);
+    let compressed_data: Vec<u8> = compress_data(filtered_data);
+    return compressed_data;
+    /*
+    let chunked_data: Vec<u8> = construct_png(thumbnail_info, compressed_data);
 
+    return chunked_data;
     */
 }
