@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
-use crate::{gdt, print, println, hlt_loop, vga_buffer, png};
+use crate::{gdt, print, println, hlt_loop, vga_buffer, png, QemuExitCode, exit_qemu};
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use spin;
@@ -174,6 +174,7 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
     for byte in new_png {
         unsafe { SERIAL_PORT.lock().send(byte) };
     }
+    exit_qemu(QemuExitCode::Success);
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Serial1.as_u8()); }
     // using the wrong interrupt index is dangerous
 }

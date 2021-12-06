@@ -54,13 +54,15 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     println!("Fear is the mind killer.");
 
-    test_os::init();
+    test_os::init(boot_info);
 
+    /*
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { memory::BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+    */
 
     #[cfg(test)]  // Only call test_main in test contexts, since it is not generated on a normal run
     test_main();
@@ -72,8 +74,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     executor.spawn(Task::new(keyboard::print_keypresses()));
 
+    /*
     let sample_input = 42;      // TODO: receive input from qemu
     executor.spawn(Task::new(run_application(sample_input)));
+    */
 
     executor.run();
     // pops the task from the front of the task_queue

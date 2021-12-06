@@ -21,8 +21,7 @@ use fixed_size_block::FixedSizeBlockAllocator;
 static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new());
 
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize = 8 * 1024 * 1024;     // Heap has total size of 8MiB
-// If heap is 16MiB or larger, allocation of size 13 fails for some reason... TODO: figure out why
+pub const HEAP_SIZE: usize = 8 * 1024 * 1024; // Heap has total size of 8MiB
 
 pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,

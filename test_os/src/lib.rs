@@ -21,6 +21,8 @@ pub mod memory;
 pub mod allocator;
 pub mod task;
 pub mod png;
+use bootloader::BootInfo;
+use x86_64::VirtAddr;
 
 #[cfg(test)]
 use bootloader::{BootInfo, entry_point};
@@ -36,10 +38,14 @@ fn test_kernel_main(_boot_info: &'static BootInfo) -> ! {
     hlt_loop();
 }
 
-pub fn init() {
+pub fn init(boot_info: &'static BootInfo) {
     gdt::init();
     interrupts::init_idt();
     unsafe { interrupts::init_pics()};    // unsafe because PICS must be configured correctly
+    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    let mut frame_allocator = unsafe { memory::BootInfoFrameAllocator::init(&boot_info.memory_map) };
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
     x86_64::instructions::interrupts::enable();         // Enable interrupts
 }
 
