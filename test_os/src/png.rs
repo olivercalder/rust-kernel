@@ -683,7 +683,7 @@ fn construct_png(thumbnail_info: PNGInfo, compressed_data: Vec<u8>) -> Vec<u8> {
 
 fn compute_max_passes_to_fit(info: &PNGInfo, max_width: usize, max_height: usize) -> usize {
     // TODO
-    return 8;
+    return 0;
 }
 
 
@@ -743,9 +743,9 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     let pass_count = if use_interlace && png_info.interlace_method == 1 {
         compute_max_passes_to_fit(&png_info, max_width, max_height)
     } else {
-        8
+        0
     };
-    // pass_count < 8 if interlaced passes should be used to generate the
+    // pass_count > 0 if interlaced passes should be used to generate the
     // thumbnail rather than averaging pixel colors
 
     let plte_data: Vec<u8>;
@@ -766,7 +766,7 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     let expected_size = compute_total_data_bytes(&png_info);
     println!("IDAT decompressed data size equals expected size? {:?}", expected_size == decompressed_data.len());
 
-    if pass_count < 8 {
+    if pass_count > 0 {
         if png_info.color_type == INDEXED_COLOR {
             return generate_indexed_thumbnail_using_passes(png_info, decompressed_data, plte_data, pass_count);
         } else {
