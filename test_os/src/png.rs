@@ -795,7 +795,7 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     let generation_info: ThumbnailGenerationInfo =
         compute_thumbnail_generation_info(&png_info, max_width, max_height,
                                           zoom_to_fill);
-    let thumbnail_color_data: Vec<u8> = if generation_info.ratio <= 1.0 {
+    let thumbnail_color_data: Vec<u8> = if generation_info.ratio < 1.0 {
         shrink_image(&png_info,
                      color_data,
                      generation_info.width,
@@ -803,7 +803,7 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
                      generation_info.ratio,
                      generation_info.x_pixel_offset,
                      generation_info.y_pixel_offset)
-    } else {
+    } else {    // if image scale is the same (need to handle crop) or larger
         stretch_image(&png_info,
                      color_data,
                      generation_info.width,
