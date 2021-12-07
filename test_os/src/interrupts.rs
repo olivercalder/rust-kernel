@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
-use crate::{gdt, print, println, hlt_loop, vga_buffer, png, QemuExitCode, exit_qemu};
+use crate::{gdt, print, println, hlt_loop, vga_buffer, serial::SERIAL1, png, QemuExitCode, exit_qemu};
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use spin;
@@ -14,8 +14,6 @@ pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
 pub static PICS: spin::Mutex<ChainedPics> = spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });  // unsafe due to unchecked offsets
-
-static mut SERIAL_PORT: spin::Mutex<SerialPort> = spin::Mutex::new(unsafe { SerialPort::new(0x3F8) });
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -70,7 +68,7 @@ pub unsafe fn init_pics() {
     let keyboard_enable = InterruptIndex::Keyboard.as_pic_enable_mask();
     let serial_enable = InterruptIndex::Serial1.as_pic_enable_mask()
         & InterruptIndex::Serial2.as_pic_enable_mask();
-    SERIAL_PORT.lock().init();
+    SERIAL1.lock().init();
     PICS.lock().write_masks(keyboard_enable & serial_enable, 0xff);
 }
 
@@ -116,7 +114,7 @@ fn read_serial_png() -> Option<Vec<u8>> {
     let mut raw_data: Vec<u8> = Vec::new();
     // Verify that first 8 bytes match the png signature
     for i in 0..8 {
-        let serial_byte = unsafe { SERIAL_PORT.lock().receive() };
+        let serial_byte = SERIAL1.lock().receive();
         raw_data.push(serial_byte);
         if serial_byte != png::PNG_SIGNATURE[i] {
             // Invalid png, so print what it was and then return
@@ -129,18 +127,18 @@ fn read_serial_png() -> Option<Vec<u8>> {
         let mut length: u32 = 0;
         let mut type_arr: [u8; 4] = [0; 4];
         for _ in 0..4 {
-            let new_byte: u8 = unsafe { SERIAL_PORT.lock().receive() };
+            let new_byte: u8 = SERIAL1.lock().receive();
             raw_data.push(new_byte);
             length <<= 8;
             length += new_byte as u32;
         }
         for i in 0..4 {
-            let new_byte: u8 = unsafe { SERIAL_PORT.lock().receive() };
+            let new_byte: u8 = SERIAL1.lock().receive();
             raw_data.push(new_byte);
             type_arr[i] = new_byte;
         }
         for _ in 0..length+4 {  // include the four crc bytes
-            raw_data.push(unsafe { SERIAL_PORT.lock().receive() });
+            raw_data.push(SERIAL1.lock().receive());
         }
         if &type_arr == "IEND".as_bytes() {
             println!("Read IEND chunk, break from loop");
@@ -172,7 +170,7 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
     let zoom_to_fill: bool = false;
     let new_png: Vec<u8> = png::generate_thumbnail(raw_data, max_width, max_height, use_interlace, zoom_to_fill);
     for byte in new_png {
-        unsafe { SERIAL_PORT.lock().send(byte) };
+        SERIAL1.lock().send(byte);
     }
     //exit_qemu(QemuExitCode::Success);
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Serial1.as_u8()); }
