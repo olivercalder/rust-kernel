@@ -1,5 +1,6 @@
 use crate::println;
 use alloc::vec::Vec;
+use lazy_static::lazy_static;
 
 
 // All png files must begin with bytes: [0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'];
@@ -7,7 +8,8 @@ const SIGNATURE_LENGTH: usize = 8;
 pub const PNG_SIGNATURE: [u8; SIGNATURE_LENGTH] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 const TYPE_OFFSET: usize = 4;   // length bytes
-const DATA_OFFSET: usize = TYPE_OFFSET + 4; // length bytes + type bytes
+const TYPE_LENGTH: usize = 4;
+const DATA_OFFSET: usize = TYPE_OFFSET + TYPE_LENGTH; // length bytes + type bytes
 const CRC_LENGTH: usize = 4;
 
 const IHDR_DATA_LENGTH: usize = 13;
@@ -30,13 +32,6 @@ const DEFAULT_COMPRESSION_LEVEL: u8 = 3;
 const FORCED_BIT_DEPTH: u8 = 8;
 
 
-struct Chunk {
-    length: u32,
-    type_arr: [u8; 4],
-    data: Vec<u8>,
-    crc: [u8; 4],
-}
-
 struct PNGInfo {
     width: usize,
     height: usize,
@@ -53,6 +48,37 @@ struct ThumbnailGenerationInfo {
     ratio: f64,             // ratio of thumbnail size to original size
     x_pixel_offset: usize,  // x pixel offset into original image
     y_pixel_offset: usize,  // y pixel offset into original image
+}
+
+//static mut CRC_TABLE: spin::Mutex<[u32; 256]> = spin::Mutex::new([0u32; 256]);
+
+
+lazy_static! {
+    static ref CRC_TABLE: [u32; 256] = {
+        let mut crc_table: [u32; 256] = [0u32; 256];
+        let mut c: u32;
+        for n in 0..256 {
+            c = n as u32;
+            for _ in 0..8 {
+                if c & 1 == 1 {
+                    c = 0xedb88320u32 ^ (c >> 1);
+                } else {
+                    c >>= 1;
+                }
+            }
+            crc_table[n] = c;
+        }
+        crc_table
+    };
+}
+
+
+fn compute_crc(slice: &[u8]) -> u32 {
+    let mut crc: u32 = 0xffffffffu32;
+    for byte in slice {
+        crc = CRC_TABLE[(crc as u8 ^ *byte) as usize] ^ (crc >> 8);
+    }
+    crc ^ 0xffffffffu32
 }
 
 
@@ -450,6 +476,14 @@ fn get_size_from_bytes(number_slice: &[u8]) -> usize {
 }
 
 
+fn write_size_to_bytes(size: usize, data: &mut Vec<u8>) {
+    data.push((size >> 24) as u8);
+    data.push((size >> 16) as u8);
+    data.push((size >> 8) as u8);
+    data.push(size as u8);
+}
+
+
 /// Verify that the given raw data contains the necessary signature and IHDR
 /// chunk, and return the information given by that IHDR chunk as a PNGInfo
 /// struct wrapped in an Option.
@@ -675,9 +709,109 @@ fn stretch_image(orig_info: &PNGInfo, orig_data: Vec<u8>,
 }
 
 
+fn write_png_signature(data: &mut Vec<u8>) {
+    for byte in &PNG_SIGNATURE {
+        data.push(*byte);
+    }
+}
+
+
+fn write_info_as_ihdr(info: &PNGInfo, data: &mut Vec<u8>) {
+    write_size_to_bytes(IHDR_DATA_LENGTH, data);
+    let slice_start: usize = data.len();
+    for byte in "IHDR".as_bytes() {
+        data.push(*byte);
+        println!("data pushed: {:?}", &data[slice_start..]);
+    }
+    write_size_to_bytes(info.width, data);
+    println!("data pushed after writing width: {:?}", &data[slice_start..]);
+    write_size_to_bytes(info.height, data);
+    println!("data pushed after writing height: {:?}", &data[slice_start..]);
+    data.push(info.bit_depth);
+    println!("data pushed after writing bit depth: {:?}", &data[slice_start..]);
+    data.push(info.color_type);
+    println!("data pushed after writing color type: {:?}", &data[slice_start..]);
+    data.push(info.compression_method);
+    println!("data pushed after writing compression method: {:?}", &data[slice_start..]);
+    data.push(info.filter_method);
+    println!("data pushed after writing filter method: {:?}", &data[slice_start..]);
+    data.push(info.interlace_method);
+    println!("data pushed after writing interlace method: {:?}", &data[slice_start..]);
+    let slice_end: usize = data.len();
+    println!("Size of IHDR (type + data): {:?}", slice_end - slice_start);
+    let slice: &[u8] = &data[slice_start..slice_end];
+    println!("Slice of IHDR (type + data): {:?}", slice);
+    println!("data pushed before crc: {:?}", &data[slice_start..]);
+    write_size_to_bytes(compute_crc(slice) as usize, data);
+    println!("data pushed after crc: {:?}", &data[slice_start..]);
+}
+
+
+fn write_data_as_idat(compressed_data: &Vec<u8>, png_data: &mut Vec<u8>) {
+    write_size_to_bytes(compressed_data.len(), png_data);
+    let slice_start: usize = png_data.len();
+    for byte in "IDAT".as_bytes() {
+        png_data.push(*byte);
+    }
+    for byte in compressed_data {
+        png_data.push(*byte);
+    }
+    let slice_end: usize = png_data.len();
+    let slice: &[u8] = &png_data[slice_start..slice_end];
+    write_size_to_bytes(compute_crc(slice) as usize, png_data);
+}
+
+
+fn write_palette_as_plte(plte_data: &Vec<u8>, png_data: &mut Vec<u8>) {
+    write_size_to_bytes(plte_data.len(), png_data);
+    let slice_start: usize = png_data.len();
+    for byte in "PLTE".as_bytes() {
+        png_data.push(*byte);
+    }
+    for byte in plte_data {
+        png_data.push(*byte);
+    }
+    let slice_end: usize = png_data.len();
+    let slice: &[u8] = &png_data[slice_start..slice_end];
+    write_size_to_bytes(compute_crc(slice) as usize, png_data);
+}
+
+
+fn write_iend(data: &mut Vec<u8>) {
+    write_size_to_bytes(0, data);
+    let slice_start: usize = data.len();
+    for byte in "IEND".as_bytes() {
+        data.push(*byte);
+    }
+    let slice_end: usize = data.len();
+    let slice: &[u8] = &data[slice_start..slice_end];
+    write_size_to_bytes(compute_crc(slice) as usize, data);
+}
+
+
 fn construct_png(thumbnail_info: PNGInfo, compressed_data: Vec<u8>) -> Vec<u8> {
-    // TODO
-    return Vec::new();
+    let total_size: usize = SIGNATURE_LENGTH + IHDR_TOTAL_LENGTH + DATA_OFFSET
+        + compressed_data.len() + CRC_LENGTH + IEND_TOTAL_LENGTH;
+    let mut png_data: Vec<u8> = Vec::with_capacity(total_size);
+    write_png_signature(&mut png_data);
+    write_info_as_ihdr(&thumbnail_info, &mut png_data);
+    write_data_as_idat(&compressed_data, &mut png_data);
+    write_iend(&mut png_data);
+    return png_data;
+}
+
+
+fn construct_indexed_png(thumbnail_info: PNGInfo, compressed_data: Vec<u8>, plte_data: Vec<u8>) -> Vec<u8> {
+    let total_size: usize = SIGNATURE_LENGTH + IHDR_TOTAL_LENGTH + DATA_OFFSET
+        + compressed_data.len() + CRC_LENGTH + DATA_OFFSET + plte_data.len()
+        + CRC_LENGTH + IEND_TOTAL_LENGTH;
+    let mut png_data: Vec<u8> = Vec::with_capacity(total_size);
+    write_png_signature(&mut png_data);
+    write_info_as_ihdr(&thumbnail_info, &mut png_data);
+    write_palette_as_plte(&plte_data, &mut png_data);
+    write_data_as_idat(&compressed_data, &mut png_data);
+    write_iend(&mut png_data);
+    return png_data;
 }
 
 
@@ -790,7 +924,6 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     } else {
         color_data = unfiltered_data;
     }
-    println!("{:?}", color_data);
 
     let generation_info: ThumbnailGenerationInfo =
         compute_thumbnail_generation_info(&png_info, max_width, max_height,
@@ -818,15 +951,9 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
         ..png_info
     };
     println!("Scaled original image by {:?}", generation_info.ratio);
-    println!("New color data:");
-    println!("{:?}", thumbnail_color_data);
 
     let filtered_data: Vec<u8> = filter_data(&thumbnail_info, thumbnail_color_data);
     let compressed_data: Vec<u8> = compress_data(filtered_data);
-    return compressed_data;
-    /*
     let chunked_data: Vec<u8> = construct_png(thumbnail_info, compressed_data);
-
     return chunked_data;
-    */
 }

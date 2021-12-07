@@ -166,15 +166,15 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
             return;
         },
     }
-    let max_width: usize = 150;
-    let max_height: usize = 150;
+    let max_width: usize = 2;
+    let max_height: usize = 2;
     let use_interlace: bool = false;
     let zoom_to_fill: bool = false;
     let new_png: Vec<u8> = png::generate_thumbnail(raw_data, max_width, max_height, use_interlace, zoom_to_fill);
     for byte in new_png {
         unsafe { SERIAL_PORT.lock().send(byte) };
     }
-    exit_qemu(QemuExitCode::Success);
+    //exit_qemu(QemuExitCode::Success);
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Serial1.as_u8()); }
     // using the wrong interrupt index is dangerous
 }
