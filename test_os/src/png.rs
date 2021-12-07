@@ -459,11 +459,14 @@ fn filter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     // If data is interlaced, then scanlines vary in length according to pass
     // number
     let mut filtered: Vec<u8> = Vec::with_capacity(data.len() + info.height);
+    let bytes_per_pixel: usize = compute_bytes_per_pixel(&info);
+    let stride: usize = info.width * bytes_per_pixel;
     for row in 0..info.height {
         // For now, always use filter type 0 -- no-op
         filtered.push(0);
-        for col in 0..info.width {
-            filtered.push(data[row * info.width + col]);
+        let row_start: usize = row * stride;
+        for col in 0..stride {
+            filtered.push(data[row_start + col]);
         }
     }
     return filtered;
@@ -642,6 +645,7 @@ fn shrink_image(orig_info: &PNGInfo, orig_data: Vec<u8>,
     let bytes_per_pixel = compute_bytes_per_pixel(&orig_info);
     let new_pixels: usize = new_width * new_height;
     let new_bytes: usize = new_pixels * bytes_per_pixel;
+    println!("Shrinking image to {:?}x{:?} ({:?} bytes)", new_height, new_width, new_bytes);
     let mut new_data: Vec<u8> = Vec::with_capacity(new_bytes);
     let mut sums: Vec<u16> = Vec::with_capacity(new_bytes);
     let mut counts: Vec<u16> = Vec::with_capacity(new_bytes);
@@ -916,7 +920,6 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     let generation_info: ThumbnailGenerationInfo =
         compute_thumbnail_generation_info(&png_info, max_width, max_height,
                                           zoom_to_fill);
-    println!("Ratio: {:?}", generation_info.ratio);
     let thumbnail_color_data: Vec<u8> = if generation_info.ratio < 1.0 {
         shrink_image(&png_info,
                      color_data,
