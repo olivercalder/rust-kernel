@@ -72,7 +72,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     // example_task() returns a future, which is then wrapped in a Task to move
     // it to the heap and pin it, and executor.spawn() adds it to the task_queue
 
-    executor.spawn(Task::new(keyboard::print_keypresses()));
+    //executor.spawn(Task::new(keyboard::print_keypresses()));
 
     /*
     let sample_input = 42;      // TODO: receive input from qemu

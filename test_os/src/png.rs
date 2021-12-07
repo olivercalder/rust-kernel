@@ -721,29 +721,17 @@ fn write_info_as_ihdr(info: &PNGInfo, data: &mut Vec<u8>) {
     let slice_start: usize = data.len();
     for byte in "IHDR".as_bytes() {
         data.push(*byte);
-        println!("data pushed: {:?}", &data[slice_start..]);
     }
     write_size_to_bytes(info.width, data);
-    println!("data pushed after writing width: {:?}", &data[slice_start..]);
     write_size_to_bytes(info.height, data);
-    println!("data pushed after writing height: {:?}", &data[slice_start..]);
     data.push(info.bit_depth);
-    println!("data pushed after writing bit depth: {:?}", &data[slice_start..]);
     data.push(info.color_type);
-    println!("data pushed after writing color type: {:?}", &data[slice_start..]);
     data.push(info.compression_method);
-    println!("data pushed after writing compression method: {:?}", &data[slice_start..]);
     data.push(info.filter_method);
-    println!("data pushed after writing filter method: {:?}", &data[slice_start..]);
     data.push(info.interlace_method);
-    println!("data pushed after writing interlace method: {:?}", &data[slice_start..]);
     let slice_end: usize = data.len();
-    println!("Size of IHDR (type + data): {:?}", slice_end - slice_start);
     let slice: &[u8] = &data[slice_start..slice_end];
-    println!("Slice of IHDR (type + data): {:?}", slice);
-    println!("data pushed before crc: {:?}", &data[slice_start..]);
     write_size_to_bytes(compute_crc(slice) as usize, data);
-    println!("data pushed after crc: {:?}", &data[slice_start..]);
 }
 
 
@@ -928,6 +916,7 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     let generation_info: ThumbnailGenerationInfo =
         compute_thumbnail_generation_info(&png_info, max_width, max_height,
                                           zoom_to_fill);
+    println!("Ratio: {:?}", generation_info.ratio);
     let thumbnail_color_data: Vec<u8> = if generation_info.ratio < 1.0 {
         shrink_image(&png_info,
                      color_data,
