@@ -32,6 +32,15 @@ const DEFAULT_COMPRESSION_LEVEL: u8 = 3;
 const FORCED_BIT_DEPTH: u8 = 8;
 
 
+#[derive(Debug)]
+pub enum ParseError {
+    SIGNATURE,
+    LENGTH,
+    TYPE,
+    ORDER,
+    MISSING,
+}
+
 struct PNGInfo {
     width: usize,
     height: usize,
@@ -49,8 +58,6 @@ struct ThumbnailGenerationInfo {
     x_pixel_offset: usize,  // x pixel offset into original image
     y_pixel_offset: usize,  // y pixel offset into original image
 }
-
-//static mut CRC_TABLE: spin::Mutex<[u32; 256]> = spin::Mutex::new([0u32; 256]);
 
 
 lazy_static! {
@@ -496,22 +503,22 @@ fn write_size_to_bytes(size: usize, data: &mut Vec<u8>) {
 /// struct wrapped in an Option.
 ///
 /// If the signature or IHDR is invalid, returns None.
-fn parse_ihdr(raw_data: &Vec<u8>) -> Option<PNGInfo> {
+fn parse_ihdr(raw_data: &Vec<u8>) -> Result<PNGInfo, ParseError> {
     if &raw_data[0..SIGNATURE_LENGTH] != PNG_SIGNATURE {
-        return None;
+        return Err(ParseError::SIGNATURE);
     }
     if raw_data.len() < FIRST_CHUNK_AFTER_IHDR {
-        return None;
+        return Err(ParseError::LENGTH);
     }
     let length: usize = get_size_from_bytes(&raw_data[SIGNATURE_LENGTH..SIGNATURE_LENGTH+4]);
     if length != IHDR_DATA_LENGTH {
-        return None;
+        return Err(ParseError::LENGTH);
     }
     if &raw_data[SIGNATURE_LENGTH+TYPE_OFFSET..SIGNATURE_LENGTH+DATA_OFFSET] != "IHDR".as_bytes() {
-        return None;
+        return Err(ParseError::TYPE);
     }
     let offset: usize = SIGNATURE_LENGTH + DATA_OFFSET;
-    Some(PNGInfo {
+    Ok(PNGInfo {
         width: get_size_from_bytes(&raw_data[offset..offset+4]),
         height: get_size_from_bytes(&raw_data[offset+4..offset+8]),
         bit_depth: raw_data[offset + 8],
@@ -529,17 +536,17 @@ fn parse_ihdr(raw_data: &Vec<u8>) -> Option<PNGInfo> {
 ///
 /// Returns the data from the PLTE chunk as a slice wrapped in an Option, if
 /// the PLTE chunk exists. If the chunk does not exist, returns None.
-fn parse_plte(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
+fn parse_plte(raw_data: &Vec<u8>) -> Result<Vec<u8>, ParseError> {
     let plte_data: Vec<u8>;
     let mut chunk_start: usize = FIRST_CHUNK_AFTER_IHDR;
     loop {
         if raw_data.len() < chunk_start + DATA_OFFSET + CRC_LENGTH {
-            return None;
+            return Err(ParseError::LENGTH);
         }
         let length: usize = get_size_from_bytes(&raw_data[chunk_start..chunk_start+4]);
         if &raw_data[chunk_start+TYPE_OFFSET..chunk_start+DATA_OFFSET] == "IDAT".as_bytes()
             || &raw_data[chunk_start+TYPE_OFFSET..chunk_start+DATA_OFFSET] == "IEND".as_bytes() {
-            return None;
+            return Err(ParseError::MISSING);
         }
         if &raw_data[chunk_start+TYPE_OFFSET..chunk_start+DATA_OFFSET] == "PLTE".as_bytes() {
             plte_data = (&raw_data[chunk_start+DATA_OFFSET..chunk_start+DATA_OFFSET+length]).to_vec();
@@ -547,7 +554,7 @@ fn parse_plte(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
         }
         chunk_start += DATA_OFFSET + length + CRC_LENGTH;
     }
-    Some(plte_data)
+    Ok(plte_data)
 }
 
 
@@ -558,13 +565,13 @@ fn parse_plte(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
 /// Concatenates all the IDAT data into one Vec<u8>. Returns that data Vec in
 /// an Option wrapper, or returns None if the data is missing or there is some
 /// other error.
-fn parse_idat(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
+fn parse_idat(raw_data: &Vec<u8>) -> Result<Vec<u8>, ParseError> {
     let mut idat_data: Vec<u8> = Vec::new();
     let mut chunk_start: usize = FIRST_CHUNK_AFTER_IHDR;
     let mut seen_idat: bool = false;
     loop {
         if raw_data.len() < chunk_start + DATA_OFFSET + CRC_LENGTH {
-            return None;
+            return Err(ParseError::LENGTH);
         }
         let length: usize = get_size_from_bytes(&raw_data[chunk_start..chunk_start+4]);
         if &raw_data[chunk_start+TYPE_OFFSET..chunk_start+DATA_OFFSET] == "IDAT".as_bytes() {
@@ -577,7 +584,10 @@ fn parse_idat(raw_data: &Vec<u8>) -> Option<Vec<u8>> {
         }
         chunk_start += DATA_OFFSET + length + CRC_LENGTH;
     }
-    Some(idat_data)
+    if idat_data.len() == 0 {
+        return Err(ParseError::MISSING);
+    }
+    Ok(idat_data)
 }
 
 
@@ -863,25 +873,26 @@ fn construct_indexed_png(thumbnail_info: PNGInfo, compressed_data: Vec<u8>, plte
 /// If an error occurs, returns the original raw_bytes, since a thumbnail
 /// cannot be computed.
 pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
-                          max_height: usize, zoom_to_fill: bool) -> Vec<u8> {
+                          max_height: usize, zoom_to_fill: bool
+                          )-> Result<Vec<u8>, ParseError> {
     let mut png_info: PNGInfo;
     match parse_ihdr(&raw_bytes) {
-        Some(info) => png_info = info,
-        None => return raw_bytes,   // Can't parse as PNG, so return original
+        Ok(info) => png_info = info,
+        Err(e) => return Err(e),   // Can't parse as PNG, so return original
     }
     assert!(check_png_info_valid(&png_info) == true);
 
     let plte_data: Vec<u8>;
     if png_info.color_type == INDEXED_COLOR {
         match parse_plte(&raw_bytes) {
-            Some(data) => plte_data = data,
-            None => return raw_bytes,   // Error or missing required PLTE chunk, so return original
+            Ok(data) => plte_data = data,
+            Err(e) => return Err(e),    // Error or missing required PLTE chunk, so return original
         }
     } else { plte_data = Vec::with_capacity(0); }
     let idat_data: Vec<u8>;
     match parse_idat(&raw_bytes) {
-        Some(data) => idat_data = data,
-        None => return raw_bytes,   // Error or missing required IDAT chunk, so return original
+        Ok(data) => idat_data = data,
+        Err(e) => return Err(e),    // Error or missing required IDAT chunk, so return original
     }
 
     let decompressed_data = decompress_data(idat_data);
@@ -934,5 +945,5 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
     let filtered_data: Vec<u8> = filter_data(&thumbnail_info, thumbnail_color_data);
     let compressed_data: Vec<u8> = compress_data(filtered_data);
     let chunked_data: Vec<u8> = construct_png(thumbnail_info, compressed_data);
-    return chunked_data;
+    return Ok(chunked_data);
 }

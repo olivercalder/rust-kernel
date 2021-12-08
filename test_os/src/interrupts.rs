@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
-use crate::{gdt, print, println, hlt_loop, vga_buffer, serial::SERIAL1, png, QemuExitCode, exit_qemu};
+use crate::{gdt, print, println, serial_println, hlt_loop, vga_buffer, serial::SERIAL1, png, QemuExitCode, exit_qemu};
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use spin;
@@ -165,9 +165,16 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
         },
     }
     let max_width: usize = 150;
-    let max_height: usize = 75;
+    let max_height: usize = 150;
     let zoom_to_fill: bool = true;
-    let new_png: Vec<u8> = png::generate_thumbnail(raw_data, max_width, max_height, zoom_to_fill);
+    let new_png: Vec<u8> = match png::generate_thumbnail(raw_data, max_width, max_height, zoom_to_fill) {
+        Ok(data) => data,
+        Err(e) => {
+            serial_println!("Error when generating thumbnail: {:?}", e);
+            exit_qemu(QemuExitCode::Failed);
+            Vec::new()
+        }
+    };
     for byte in new_png {
         SERIAL1.lock().send(byte);
     }
