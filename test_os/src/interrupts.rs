@@ -166,13 +166,12 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
     }
     let max_width: usize = 150;
     let max_height: usize = 75;
-    let use_interlace: bool = false;
     let zoom_to_fill: bool = true;
-    let new_png: Vec<u8> = png::generate_thumbnail(raw_data, max_width, max_height, use_interlace, zoom_to_fill);
+    let new_png: Vec<u8> = png::generate_thumbnail(raw_data, max_width, max_height, zoom_to_fill);
     for byte in new_png {
         SERIAL1.lock().send(byte);
     }
-    //exit_qemu(QemuExitCode::Success);
+    exit_qemu(QemuExitCode::Success);
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Serial1.as_u8()); }
     // using the wrong interrupt index is dangerous
 }
