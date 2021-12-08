@@ -304,10 +304,15 @@ fn unfilter_interlaced_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
         h_offset = base_offset * (pass & 1); // if * is faster than &, <<, and ^
         // h_offset = offset & (offset << ((pass & 1) ^ 1));
         h_interval = base_interval >> (pass >> 1);
-        let pass_height: usize = ((info.height - (v_offset + 1)) >> (pass >> 1)) + 1;  // division is slow
-        // let pass_height: usize = ((info.height - (v_offset + 1)) / v_interval) + 1;
-        let pass_width: usize = ((info.width - (h_offset + 1)) >> (pass >> 1)) + 1;   // division is slow
-        // let pass_width: usize = ((info.width - (h_offset + 1)) / h_interval) + 1;
+        if (v_offset >= info.height) || (h_offset >= info.width) {
+            v_offset = h_offset;
+            v_interval = h_interval;
+            continue;
+        }
+        //let pass_height: usize = ((info.height - (v_offset + 1)) >> (pass >> 1)) + 1;  // division is slow
+        let pass_height: usize = ((info.height - (v_offset + 1)) / v_interval) + 1;
+        //let pass_width: usize = ((info.width - (h_offset + 1)) >> (pass >> 1)) + 1;   // division is slow
+        let pass_width: usize = ((info.width - (h_offset + 1)) / h_interval) + 1;
         let mut row = v_offset;
         let row_interval: usize = v_interval * stride;  // byte interval between rows
         for _ in 0..pass_height {
