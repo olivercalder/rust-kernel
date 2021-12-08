@@ -285,8 +285,12 @@ fn unfilter_interlaced_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
     let mut v_interval: usize = 8;
     let bytes_per_pixel: usize = compute_bytes_per_pixel(&info);
     let stride: usize = info.width * bytes_per_pixel;
+    let total_bytes: usize = info.height * stride;
     let mut index: usize = 0;
-    let mut unfiltered: Vec<u8> = Vec::with_capacity(info.height * info.width * bytes_per_pixel);
+    let mut unfiltered: Vec<u8> = Vec::with_capacity(total_bytes);
+    for _ in 0..total_bytes {
+        unfiltered.push(0u8);
+    }
     // pass h_offset    v_offset    h_interval  v_interval
     // 0    0           0           8           8
     // 1    4           0           8           8
@@ -590,10 +594,30 @@ fn deindex_color(idat_data: Vec<u8>, plte_data: Vec<u8>) -> Vec<u8> {
 }
 
 
-fn compute_pixel_offset(orig_size: usize, new_size: usize, ratio: f64) -> usize {
+fn compute_orig_pixel_offset(orig_size: usize, new_size: usize, ratio: f64) -> usize {
+    // Use when shrinking an image
+    println!("Computing orig pixel offset when orig={:?}, new={:?}, ratio={:?}", orig_size, new_size, ratio);
     let scaled_new_size: f64 = new_size as f64 / ratio;
+    println!("Scaled new size = {:?}", scaled_new_size);
     let leftover: f64 = orig_size as f64 - scaled_new_size;
+    println!("Leftover pixels = {:?}", leftover);
     let offset: f64 = leftover / 2.0;
+    println!("Offset = {:?}", offset);
+    println!("Offset as usize = {:?}", offset as usize);
+    return offset as usize;
+}
+
+
+fn compute_new_pixel_offset(orig_size: usize, new_size: usize, ratio: f64) -> usize {
+    // Use when stretching an image
+    println!("Computing new pixel offset when orig={:?}, new={:?}, ratio={:?}", orig_size, new_size, ratio);
+    let scaled_orig_size: f64 = orig_size as f64 * ratio;
+    println!("Scaled orig size = {:?}", scaled_orig_size);
+    let leftover: f64 = scaled_orig_size - new_size as f64;
+    println!("Leftover pixels = {:?}", leftover);
+    let offset: f64 = leftover / 2.0;
+    println!("Offset = {:?}", offset);
+    println!("Offset as usize = {:?}", offset as usize);
     return offset as usize;
 }
 
@@ -614,12 +638,18 @@ fn compute_thumbnail_generation_info(orig_info: &PNGInfo,
         if h_ratio > v_ratio {  // scale to fit max_width
             generation_info.ratio = h_ratio;
             generation_info.x_pixel_offset = 0;
-            generation_info.y_pixel_offset =
-                compute_pixel_offset(orig_info.height, max_height, h_ratio);
+            generation_info.y_pixel_offset = if h_ratio > 1.0 {
+                compute_new_pixel_offset(orig_info.height, max_height, h_ratio)
+            } else {
+                compute_orig_pixel_offset(orig_info.height, max_height, h_ratio)
+            };
         } else {    // scale to fit max_height
             generation_info.ratio = v_ratio;
-            generation_info.x_pixel_offset =
-                compute_pixel_offset(orig_info.width, max_width, v_ratio);
+            generation_info.x_pixel_offset = if v_ratio > 1.0 {
+                compute_new_pixel_offset(orig_info.width, max_width, v_ratio)
+            } else {
+                compute_orig_pixel_offset(orig_info.width, max_width, v_ratio)
+            };
             generation_info.y_pixel_offset = 0;
         }
     } else {
@@ -698,10 +728,10 @@ fn stretch_image(orig_info: &PNGInfo, orig_data: Vec<u8>,
     let bytes_per_new_row: usize = new_width * bytes_per_pixel;
     for row in 0..new_height {
         let new_row_start_byte: usize = row * bytes_per_new_row;
-        let orig_row: usize = (row as f64 / ratio) as usize + y_pixel_offset;
+        let orig_row: usize = ((row + y_pixel_offset) as f64 / ratio) as usize;
         let orig_row_start_byte: usize = orig_row * bytes_per_orig_row; // excluding the x byte offset
         for col in 0..new_width {
-            let orig_col: usize = (col as f64 / ratio) as usize + x_pixel_offset;
+            let orig_col: usize = ((col + x_pixel_offset) as f64 / ratio) as usize;
             let orig_col_start_byte = orig_col * bytes_per_pixel + orig_row_start_byte;
             let new_col_start_byte: usize = col * bytes_per_pixel + new_row_start_byte;
             for i in 0..bytes_per_pixel {
