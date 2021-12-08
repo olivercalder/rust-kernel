@@ -143,11 +143,6 @@ fn compute_bytes_per_pixel(info: &PNGInfo) -> usize {
 }
 
 
-fn compute_total_data_bytes(info: &PNGInfo) -> usize {
-    info.height * (1 + compute_bytes_per_pixel(&info) * info.width)
-}
-
-
 fn decompress_data(data: Vec<u8>) -> Vec<u8> {
     return miniz_oxide::inflate::decompress_to_vec_zlib(data.as_slice()).expect("Failed to decompress!");
 }
@@ -842,49 +837,25 @@ fn construct_indexed_png(thumbnail_info: PNGInfo, compressed_data: Vec<u8>, plte
 }
 
 
-fn compute_max_passes_to_fit(info: &PNGInfo, max_width: usize, max_height: usize) -> usize {
-    // TODO
-    return 0;
-}
-
-
-fn generate_indexed_thumbnail_using_passes(orig_info: PNGInfo, idat_data: Vec<u8>,
-                                           plte_data: Vec<u8>, passes: usize) -> Vec<u8> {
-    // TODO
-    return Vec::new();
-}
-
-
-fn generate_thumbnail_using_passes(orig_info: PNGInfo, color_data: Vec<u8>, passes: usize) -> Vec<u8> {
-    // TODO
-    return Vec::new();
-}
-
-
 /// Generates a thumbnail for the image represented by the given raw bytes.
 ///
 /// raw_bytes:      the unaltered bytes of the png file
 /// max_width:      the maximum width allowed for the thumbnail
 /// max_height:     the maximum height allowed for the thumbnail
-/// use_interlace:  if true, the original image is interlaced, and a combination
-///                 of passes results in an image which falls within the given
-///                 maximum dimensions, then use those passes to generate the
-///                 thumbnail (skipping much of the computation)
-/// zoom_to_fill:   if true and either use_interface is false or interlacing
-///                 cannot be used to generate a thumbnail, then fits the less
-///                 constrained dimension to the corresponding maximum size, and
-///                 crops the more constrained dimension to fit the its
-///                 corresponding maximum size; otherwise, zooms to fit the
-///                 original aspect ratio within the given maximum dimensions
+/// zoom_to_fill:   if true then fits the less constrained dimension to the
+///                 corresponding maximum size, and crops the more constrained
+///                 dimension to fit the its corresponding maximum size;
+///                 otherwise, zooms to fit the original aspect ratio within
+///                 the given maximum dimensions
 ///
-/// If use_interlace is false (or the first pass already exceeds the given
-/// maximum dimensions), the image is deinterlaced and average colors are used
-/// to compute the thumbnail. In this case, zoom_to_fill determines whether the
-/// more or less constrained dimension is stretched to its corresponding maximum.
-/// If zoom_to_fill is true, then the less constrained dimension is used,
-/// resulting in a thumbnail with size maximum_width x maximum_height; if
-/// zoom_to_fill is false, then the more constrained dimension is used,
-/// resulting in a thumbnail that is zoomed to fit, rather than fill.
+/// Average colors are used to compute the thumbnail. If the image is interlaced,
+/// then the image is first deinterlaced as part of the unfiltering process.
+/// The variable zoom_to_fill determines whether the more or less constrained
+/// dimension is stretched to its corresponding maximum. If zoom_to_fill is true,
+/// then the less constrained dimension is used, resulting in a thumbnail with
+/// size maximum_width x maximum_height; if zoom_to_fill is false, then the more
+/// constrained dimension is used, resulting in a thumbnail that is zoomed to
+/// fit, rather than fill.
 ///
 /// Disregards all ancillary chunks (those besides IHDR, PLTE, IDAT, and IEND).
 ///
@@ -892,22 +863,13 @@ fn generate_thumbnail_using_passes(orig_info: PNGInfo, color_data: Vec<u8>, pass
 /// If an error occurs, returns the original raw_bytes, since a thumbnail
 /// cannot be computed.
 pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
-                          max_height: usize, use_interlace: bool,
-                          zoom_to_fill: bool) -> Vec<u8> {
+                          max_height: usize, zoom_to_fill: bool) -> Vec<u8> {
     let mut png_info: PNGInfo;
     match parse_ihdr(&raw_bytes) {
         Some(info) => png_info = info,
         None => return raw_bytes,   // Can't parse as PNG, so return original
     }
     assert!(check_png_info_valid(&png_info) == true);
-
-    let pass_count = if use_interlace && png_info.interlace_method == 1 {
-        compute_max_passes_to_fit(&png_info, max_width, max_height)
-    } else {
-        0
-    };
-    // pass_count > 0 if interlaced passes should be used to generate the
-    // thumbnail rather than averaging pixel colors
 
     let plte_data: Vec<u8>;
     if png_info.color_type == INDEXED_COLOR {
@@ -924,16 +886,6 @@ pub fn generate_thumbnail(raw_bytes: Vec<u8>, max_width: usize,
 
     let decompressed_data = decompress_data(idat_data);
     println!("Decompressed data from IDAT blocks:");
-    let expected_size = compute_total_data_bytes(&png_info);
-    println!("IDAT decompressed data size equals expected size? {:?}", expected_size == decompressed_data.len());
-
-    if pass_count > 0 {
-        if png_info.color_type == INDEXED_COLOR {
-            return generate_indexed_thumbnail_using_passes(png_info, decompressed_data, plte_data, pass_count);
-        } else {
-            return generate_thumbnail_using_passes(png_info, decompressed_data, pass_count);
-        }
-    }
 
     let unfiltered_data: Vec<u8>;
     if png_info.interlace_method == 1 {
