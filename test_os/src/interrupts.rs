@@ -164,8 +164,8 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
             return;
         },
     }
-    let max_width: usize = 2;
-    let max_height: usize = 2;
+    let max_width: usize = 150;
+    let max_height: usize = 75;
     let use_interlace: bool = false;
     let zoom_to_fill: bool = false;
     let new_png: Vec<u8> = png::generate_thumbnail(raw_data, max_width, max_height, use_interlace, zoom_to_fill);
