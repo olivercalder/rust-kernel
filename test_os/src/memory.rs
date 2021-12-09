@@ -66,6 +66,12 @@ impl BootInfoFrameAllocator {
         // create `PhysFrame` types from the start addresses
         frame_addresses.map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
     }
+
+    pub fn allocate_n_frames(&mut self, n: usize) -> impl Iterator<Item = PhysFrame> {
+        let frames = self.usable_frames().skip(self.next).take(n);
+        self.next += n;
+        frames
+    }
 }
 
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {

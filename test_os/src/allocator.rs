@@ -20,12 +20,15 @@ use fixed_size_block::FixedSizeBlockAllocator;
 //static ALLOCATOR: Locked<LinkedListAllocator> = Locked::new(LinkedListAllocator::new());
 static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new());
 
+use crate::memory;
+
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize = 8 * 1024 * 1024; // Heap has total size of 8MiB
+pub const HEAP_SIZE: usize = 64 * 1024 * 1024; // Heap has total size of 64MiB
+pub const PAGE_TOTAL: usize = HEAP_SIZE / 4096;
 
 pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
+    frame_allocator: &mut memory::BootInfoFrameAllocator,
 ) -> Result<(), MapToError<Size4KiB>> {
     let page_range = {
         let heap_start = VirtAddr::new(HEAP_START as u64);
@@ -35,13 +38,15 @@ pub fn init_heap(
         Page::range_inclusive(heap_start_page, heap_end_page)
     };
 
+    let mut frames = frame_allocator.allocate_n_frames(PAGE_TOTAL);
+
     for page in page_range {
-        let frame = frame_allocator
-            .allocate_frame()
+        let frame = frames
+            .next()
             .ok_or(MapToError::FrameAllocationFailed)?; // ? unwraps valid values or returns erroneous values
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         unsafe {
-            mapper.map_to(page, frame, flags, frame_allocator)?.flush() // ? unwraps valid values or returns erroneous values
+            mapper.map_to(page, frame, flags, frame_allocator as &mut FrameAllocator<Size4KiB>)?.flush() // ? unwraps valid values or returns erroneous values
         };
     }
 
