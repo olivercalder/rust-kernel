@@ -687,13 +687,13 @@ fn shrink_image(orig_info: &PNGInfo, orig_data: Vec<u8>,
     let new_bytes: usize = new_pixels * bytes_per_pixel;
     println!("Shrinking image to {:?}x{:?} ({:?} bytes)", new_height, new_width, new_bytes);
     let mut new_data: Vec<u8> = Vec::with_capacity(new_bytes);
-    let mut sums: Vec<u16> = Vec::with_capacity(new_bytes);
-    let mut counts: Vec<u16> = Vec::with_capacity(new_bytes);
+    let mut sums: Vec<u32> = Vec::with_capacity(new_bytes);
+    let mut counts: Vec<u32> = Vec::with_capacity(new_bytes);
     for _ in 0..new_bytes {
-        sums.push(0u16);
+        sums.push(0u32);
     }
     for _ in 0..new_pixels {
-        counts.push(0u16);
+        counts.push(0u32);
     }
     let bytes_per_orig_row: usize = orig_info.width * bytes_per_pixel;
     let x_byte_offset: usize = x_pixel_offset * bytes_per_pixel;
@@ -709,7 +709,7 @@ fn shrink_image(orig_info: &PNGInfo, orig_data: Vec<u8>,
             let new_index: usize = new_row_start_index + new_col_index;
             let new_col_start_byte: usize = new_index * bytes_per_pixel;
             for i in 0..bytes_per_pixel {
-                sums[new_col_start_byte + i] += orig_data[orig_col_start_byte + i] as u16;
+                sums[new_col_start_byte + i] += orig_data[orig_col_start_byte + i] as u32;
             }
             counts[new_index] += 1;
         }
