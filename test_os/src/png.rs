@@ -484,9 +484,10 @@ fn filter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
 }
 
 
-fn get_size_from_bytes(number_slice: &[u8]) -> usize {
-    ((number_slice[0] as usize) << 24) | ((number_slice[1] as usize) << 16)
-        | ((number_slice[2] as usize) << 8) | (number_slice[3] as usize)
+#[inline(never)]
+fn get_size_from_bytes(number_vec: &[u8], start: usize) -> usize {
+    ((number_vec[start] as usize) << 24) | ((number_vec[start+1] as usize) << 16)
+        | ((number_vec[start+2] as usize) << 8) | (number_vec[start+3] as usize)
 }
 
 
@@ -510,7 +511,7 @@ fn parse_ihdr(raw_data: &Vec<u8>) -> Result<PNGInfo, ParseError> {
     if raw_data.len() < FIRST_CHUNK_AFTER_IHDR {
         return Err(ParseError::LENGTH);
     }
-    let length: usize = get_size_from_bytes(&raw_data[SIGNATURE_LENGTH..SIGNATURE_LENGTH+4]);
+    let length: usize = get_size_from_bytes(&raw_data, SIGNATURE_LENGTH);
     if length != IHDR_DATA_LENGTH {
         return Err(ParseError::LENGTH);
     }
@@ -519,8 +520,8 @@ fn parse_ihdr(raw_data: &Vec<u8>) -> Result<PNGInfo, ParseError> {
     }
     let offset: usize = SIGNATURE_LENGTH + DATA_OFFSET;
     Ok(PNGInfo {
-        width: get_size_from_bytes(&raw_data[offset..offset+4]),
-        height: get_size_from_bytes(&raw_data[offset+4..offset+8]),
+        width: get_size_from_bytes(&raw_data, offset),
+        height: get_size_from_bytes(&raw_data, offset),
         bit_depth: raw_data[offset + 8],
         color_type: raw_data[offset + 9],
         compression_method: raw_data[offset + 10],
@@ -543,7 +544,7 @@ fn parse_plte(raw_data: &Vec<u8>) -> Result<Vec<u8>, ParseError> {
         if raw_data.len() < chunk_start + DATA_OFFSET + CRC_LENGTH {
             return Err(ParseError::LENGTH);
         }
-        let length: usize = get_size_from_bytes(&raw_data[chunk_start..chunk_start+4]);
+        let length: usize = get_size_from_bytes(&raw_data, chunk_start);
         if &raw_data[chunk_start+TYPE_OFFSET..chunk_start+DATA_OFFSET] == "IDAT".as_bytes()
             || &raw_data[chunk_start+TYPE_OFFSET..chunk_start+DATA_OFFSET] == "IEND".as_bytes() {
             return Err(ParseError::MISSING);
@@ -573,7 +574,7 @@ fn parse_idat(raw_data: &Vec<u8>) -> Result<Vec<u8>, ParseError> {
         if raw_data.len() < chunk_start + DATA_OFFSET + CRC_LENGTH {
             return Err(ParseError::LENGTH);
         }
-        let length: usize = get_size_from_bytes(&raw_data[chunk_start..chunk_start+4]);
+        let length: usize = get_size_from_bytes(&raw_data, chunk_start);
         if &raw_data[chunk_start+TYPE_OFFSET..chunk_start+DATA_OFFSET] == "IDAT".as_bytes() {
             seen_idat = true;
             for byte in &raw_data[chunk_start+DATA_OFFSET..chunk_start+DATA_OFFSET+length] {
