@@ -519,9 +519,11 @@ fn parse_ihdr(raw_data: &Vec<u8>) -> Result<PNGInfo, ParseError> {
         return Err(ParseError::TYPE);
     }
     let offset: usize = SIGNATURE_LENGTH + DATA_OFFSET;
+    let width = get_size_from_bytes(&raw_data, offset);
+    let height = get_size_from_bytes(&raw_data, offset + 4);
     Ok(PNGInfo {
-        width: get_size_from_bytes(&raw_data, offset),
-        height: get_size_from_bytes(&raw_data, offset),
+        width,
+        height,
         bit_depth: raw_data[offset + 8],
         color_type: raw_data[offset + 9],
         compression_method: raw_data[offset + 10],
