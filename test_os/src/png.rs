@@ -201,7 +201,7 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                 }
                 for col in bytes_per_pixel..stride {
                     let orig: u32 = data[orig_start + col] as u32;
-                    unfiltered.push((orig + unfiltered[(unf_start + col) - bytes_per_pixel] as u32) as u8);
+                    unfiltered.push((orig + unfiltered[unf_start + col - bytes_per_pixel] as u32) as u8);
                 }
             },
             2 => {  // up
@@ -212,7 +212,7 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                 } else {
                     for col in 0..stride {
                         let orig: u32 = data[orig_start + col] as u32;
-                        unfiltered.push((orig + unfiltered[unf_start - stride + col] as u32) as u8);
+                        unfiltered.push((orig + unfiltered[unf_start + col - stride] as u32) as u8);
                     }
                 }
             },
@@ -223,19 +223,19 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                     }
                     for col in bytes_per_pixel..stride {
                         let orig: u32 = data[orig_start + col] as u32;
-                        let left: u32 = unfiltered[unf_start - bytes_per_pixel + col] as u32;
+                        let left: u32 = unfiltered[unf_start + col - bytes_per_pixel] as u32;
                         unfiltered.push((orig + (left >> 1)) as u8);
                     }
                 } else {
                     for col in 0..bytes_per_pixel {
                         let orig: u32 = data[orig_start + col] as u32;
-                        let up: u32 = unfiltered[unf_start - stride + col] as u32;
+                        let up: u32 = unfiltered[unf_start + col - stride] as u32;
                         unfiltered.push((orig + (up >> 1)) as u8);
                     }
                     for col in bytes_per_pixel..stride {
                         let orig: u32 = data[orig_start + col] as u32;
-                        let left: u32 = unfiltered[unf_start - bytes_per_pixel + col] as u32;
-                        let up: u32 = unfiltered[unf_start - stride + col] as u32;
+                        let left: u32 = unfiltered[unf_start + col - bytes_per_pixel] as u32;
+                        let up: u32 = unfiltered[unf_start + col - stride] as u32;
                         unfiltered.push((orig + ((left + up) >> 1)) as u8);
                     }
                 }
@@ -248,7 +248,7 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                     for col in bytes_per_pixel..stride {
                         let orig: u32 = data[orig_start + col] as u32;
                         let result: u32 = paeth_predictor(
-                            unfiltered[unf_start - bytes_per_pixel + col],
+                            unfiltered[unf_start + col - bytes_per_pixel],
                             0, 0) as u32;
                         unfiltered.push((orig + result) as u8);
                     }
@@ -256,15 +256,15 @@ fn unfilter_data(info: &PNGInfo, data: Vec<u8>) -> Vec<u8> {
                     for col in 0..bytes_per_pixel {
                         let orig: u32 = data[orig_start + col] as u32;
                         let result: u32 = paeth_predictor(
-                            0, unfiltered[unf_start - stride + col], 0) as u32;
+                            0, unfiltered[unf_start + col - stride], 0) as u32;
                         unfiltered.push((orig + result) as u8);
                     }
                     for col in bytes_per_pixel..stride {
                         let orig: u32 = data[orig_start + col] as u32;
                         let result: u32 = paeth_predictor(
-                            unfiltered[unf_start - bytes_per_pixel + col],
-                            unfiltered[unf_start - stride + col],
-                            unfiltered[unf_start - (stride + bytes_per_pixel) + col],
+                            unfiltered[unf_start + col - bytes_per_pixel],
+                            unfiltered[unf_start + col - stride],
+                            unfiltered[unf_start + col - (stride + bytes_per_pixel)],
                             ) as u32;
                         unfiltered.push((orig + result) as u8);
                     }
