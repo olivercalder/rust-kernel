@@ -176,7 +176,7 @@ extern "x86-interrupt" fn serial_interrupt_handler(_stack_frame: InterruptStackF
         }
     };
     for byte in new_png {
-        SERIAL1.lock().send(byte);
+        SERIAL1.lock().send_raw(byte);
     }
     exit_qemu(QemuExitCode::Success);
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Serial1.as_u8()); }
