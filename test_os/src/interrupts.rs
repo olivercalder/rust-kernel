@@ -118,7 +118,7 @@ fn read_serial_png() -> Option<Vec<u8>> {
         raw_data.push(serial_byte);
         if serial_byte != png::PNG_SIGNATURE[i] {
             // Invalid png, so print what it was and then return
-            println!("First byte invalid: {:02x?}", serial_byte);
+            println!("Invalid byte {:02x?}", serial_byte);
             return None;
         }
     }

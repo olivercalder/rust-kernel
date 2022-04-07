@@ -46,7 +46,7 @@ pub fn init_heap(
             .ok_or(MapToError::FrameAllocationFailed)?; // ? unwraps valid values or returns erroneous values
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         unsafe {
-            mapper.map_to(page, frame, flags, frame_allocator as &mut FrameAllocator<Size4KiB>)?.flush() // ? unwraps valid values or returns erroneous values
+            mapper.map_to(page, frame, flags, frame_allocator as &mut dyn FrameAllocator<Size4KiB>)?.flush() // ? unwraps valid values or returns erroneous values
         };
     }
 

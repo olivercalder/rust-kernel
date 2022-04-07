@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
-#![feature(asm)]
 #![test_runner(test_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]  // By default, generates a main() function to test, but we have no_main
 #![allow(unused_imports)]
@@ -101,8 +100,8 @@ async fn example_task() {
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    serial_println!("{}", info);
-    exit_qemu(QemuExitCode::Failed);
+    println!("{}", info);
+    // exit_qemu(QemuExitCode::Failed);
     test_os::hlt_loop();
 }
 
