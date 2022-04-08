@@ -52,7 +52,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("Fear is the mind killer.");
 
     test_os::init(boot_info);
-
+    serial_print!("1");  // send one byte over the serial port to signal the kernel is ready to receive
     /*
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
